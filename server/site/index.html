@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+
+<head>
+<meta charset="UTF-8">
+<title>Page Test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script>
+    let escapeStr = (s)=>s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    var ws = null;
+    function wsConnect() {
+        if (ws) ws = null;
+        ws = new WebSocket('ws://localhost/serial');
+        console.log('websocket created...',ws,this.timex);
+        if (!ws.on) ws.on = function(event,func) { ws.addEventListener(event,func) };
+        ws.on('error',(e)=>console.error);
+        ws.on('message',(msg)=>{ 
+            console.log('msg:',msg, msg.data);
+            let text = escapeStr(msg.data.replace(/\r?\n|\r/,''));
+            console.log('text:',text)
+            if (text!='ok') document.getElementById('response').innerHTML = text; 
+        });
+        ws.on('open',(evt)=>{ console.log('ws connected'); });
+        ws.on('close',(evt)=>{ console.log('ws disconnected'); setTimeout(wsConnect,1000); });
+    };
+    wsConnect();
+    function send() {
+        let text = document.getElementById('cmd').value;
+        console.log(`sending: ${text}`);
+        console.log(ws);
+        ws.send(text + '\r\n');
+    };
+</script>
+</head>
+
+<body>
+<div id="app" class="page">
+  <!-- test content section -->
+  <label>CMD: <input type="text" id="cmd" /></label>
+  <button type="button" onclick="send()">SEND</button>
+  <p id="response">nothing</p>
+</div>
+</body>
+
+</html>

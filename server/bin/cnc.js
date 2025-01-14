@@ -51,17 +51,21 @@ try {
             scribe.log(scribe.format(cfg.log$,ctx));    // log request URL
             if (ctx.url==='/') ctx.url = '/index.html'; // adjust homepage
             // handle and send request...
-            let file = path.join(cfg.site.root,ctx.url);
-            ctx.headers['Content-type'] = mimeType(path.extname(file));
-            let data = await fsp.readFile(file);
+            ctx.file = path.join(cfg.site.root,ctx.url);
+            scribe.trace(`File: ${ctx.file}`);
+            ctx.headers['Content-type'] = mimeType(path.extname(ctx.file));
+            let data = await fsp.readFile(ctx.file);
             res.writeHead(200, ctx.headers);
             res.end(data);
         } catch(e) {
             // handle content error...
             if (typeof(e)!='number') e = (e.code==='ENOENT') ? 404 : 500;
+            let msg = httpStatusMsg(e);
+            let ref = e===404 ? ` [${ctx.file}]` : '';
+            scribe.error(`[${e}]: ${msg.msg}${ref}`);
             ctx.headers['Content-type'] = 'application/json; charset=UTF-8';    // force JSON
             res.writeHead(200, ctx.headers);
-            res.end(JSON.stringify(httpStatusMsg(e)));
+            res.end(JSON.stringify(msg));
         };
     }).listen(cfg.port);
     scribe.info(`CNC Offline Controller Server setup on: ${cfg.host}:${cfg.port}`);

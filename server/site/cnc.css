@@ -1,0 +1,108 @@
+/* 
+  Site CSS for CNC Offline Controller ... 
+    https://www.smashingmagazine.com/2007/07/css-specificity-things-you-should-know/
+*/
+
+:root {
+    --body_font: Arial, Helvetica, sans-serif;
+    --default: black!important;
+    --shade: lightgray!important;
+    --light-bg: #80C0FF!important;
+    --light-text: white!important;
+    --light-border: white!important;
+    --dark-bg: #4040FF!important;
+    --dark-text: black!important;
+    --dark-border: black!important;
+}
+html, body {
+    font-family: var(--body_font);
+}
+
+div#page {
+    background-color: var(--default);
+    color: var(--default);
+}
+
+div#header, div#main, div#footer {
+    width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+div#header {
+    height: 40px;
+    background-color: var(--shade);
+}
+
+div#main {
+    height: 400px;
+}
+
+div#footer {
+    height: 40px;
+    background-color: var(--shade);
+}
+
+.menu-grid {
+    display: grid;
+    grid-template-columns: repeat(6,125px);
+    grid-template-rows: 54px;
+    column-gap: 6px;
+    width: 780px;
+    padding: 3px 10px;
+    align-items: stretch;
+    justify-items: stretch;
+    background-color: var(--shade);
+    font-size: 24px;
+    font-weight: bolder;
+}
+.menu-item {
+    border: 2px solid var(--dark-border);  
+    border-radius: 8px;
+    background-color: var(--light-bg);
+    text-align: center;
+}
+.menu-item.pick {
+    color: var(--light-text);
+    background-color: var(--dark-bg);
+}
+.menu-item span {
+    display: inline-flex;
+    height: -webkit-fill-available;
+    align-items: center;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(5,150px);
+    grid-template-rows: repeat(4,80px);
+    column-gap: 7.5px;
+    row-gap: 5px;
+    width: 780px;
+    padding: 2.5px 10px;
+    align-items: stretch;
+    justify-items: stretch;
+    background-color: var(--light-bg);
+    font-size: 24px;
+    font-weight: bolder;
+}
+.button-item {
+    border: 4px solid var(--dark-border);
+    border-radius: 8px;
+    color: var(--light-text);
+    background-color: var(--dark-bg);
+    text-align: center;
+}
+.button-item span {
+    display: inline-flex;
+    height: -webkit-fill-available;
+    align-items: center;
+}
+.button-item.empty {
+    background-color: var(--light-bg);
+    border: none;
+}
+.button-img { 
+    height: -webkit-fill-available;
+}
+.button-icon.material-icons { font-size: 64px; }

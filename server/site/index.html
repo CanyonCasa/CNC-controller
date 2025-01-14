@@ -4,45 +4,43 @@
 
 <head>
 <meta charset="UTF-8">
-<title>Page Test</title>
+<title>CNC Controller</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
-<script>
-    let escapeStr = (s)=>s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    var ws = null;
-    function wsConnect() {
-        if (ws) ws = null;
-        ws = new WebSocket('ws://localhost/serial');
-        console.log('websocket created...',ws,this.timex);
-        if (!ws.on) ws.on = function(event,func) { ws.addEventListener(event,func) };
-        ws.on('error',(e)=>console.error);
-        ws.on('message',(msg)=>{ 
-            console.log('msg:',msg, msg.data);
-            let text = escapeStr(msg.data.replace(/\r?\n|\r/,''));
-            console.log('text:',text)
-            if (text!='ok') document.getElementById('response').innerHTML = text; 
-        });
-        ws.on('open',(evt)=>{ console.log('ws connected'); });
-        ws.on('close',(evt)=>{ console.log('ws disconnected'); setTimeout(wsConnect,1000); });
-    };
-    wsConnect();
-    function send() {
-        let text = document.getElementById('cmd').value;
-        console.log(`sending: ${text}`);
-        console.log(ws);
-        ws.send(text + '\r\n');
-    };
-</script>
+<!--<link rel="stylesheet" href="/icons.css">-->
+<link rel="stylesheet" href="/cnc.css">
+<!--<link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,500,500i,700,700i" rel="stylesheet">-->
+<!--<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">-->
+<script src="/wsCNC.js"></script>
+<!--<script src="https://unpkg.com/vue@3"></script>-->
+<script src="/cdn/Vue3/vue.3.5.13.js"></script>
+<script src="/cdn/Vue3/VueLib3.js"></script>
+<script src="/cncTabsData.js"></script>
 </head>
 
 <body>
 <div id="app" class="page">
-  <!-- test content section -->
-  <label>CMD: <input type="text" id="cmd" /></label>
-  <button type="button" onclick="send()">SEND</button>
-  <p id="response">nothing</p>
-</div>
+    <div id="header">
+
+    </div><!--header-->
+    <div id="main">
+        <div class="menu-grid">
+            <div class="menu-item" v-if-class:pick="i===activeTab" v-for="t,i in tabs" @click="pickTab(i)">
+                <span>{{t.label}}</span>
+            </div>
+        </div><!--menu-->
+        <div class="button-grid">
+            <div class="button-item" v-if-class:empty="!b.label" v-for="b in activeButtons" @click="pickButton(b)">
+                <i v-if="b.icon" class="button-icon" v-icon:[b.icon]></i>
+                <img v-else-if="b.img" class="button-img" :src="b.img" />
+                <span v-else>{{b.label||''}}</span>
+            </div>
+        </div><!--group-->
+    </div><!--main-->
+    <div id="footer">
+    </div><!--footer-->
+</div><!--app-->
 </body>
+
+<script src="/cncVue3Model.js"></script>
 
 </html>

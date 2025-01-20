@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+
+<head>
+<meta charset="UTF-8">
+<title>CNC Controller</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/cnc.css">
+<script src="/wsCNC.js"></script>
+<script src="/cdn/Vue3/vue.3.5.13.js"></script>
+<script src="/cdn/Vue3/VueLib3.js"></script>
+<script src="/cncModelData.js"></script>
+</head>
+
+<body>
+    <div id="app" class="page">
+    <div id="content">
+        <div id="menu" class="menu-grid">
+            <div class="menu-item" v-if-class:pick="i===activeTab" v-for="t,i in tabs" @click="pickTab(i)">
+                <span>{{t.label}}</span>
+            </div>
+        </div><!--#menu-->
+        <div v-show="activeTabView==='buttons'" class="tab button-grid">
+            <div class="button-item" v-if-class:empty="!b.label"  v-if-class:disabled="b.disabled"v-for="b in activeButtons" @click="pickButton(b)">
+                <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" />
+                <span v-else v-html="b.label||''"></span>
+            </div>
+        </div><!--.tab class-->
+        <div id="status" class="status-grid">
+            <span class="status-item" v-for="s in status">{{s}}</span>
+        </div><!--#status-->
+    </div><!--.content-->
+    <div id="info" v-show="show.info">
+        <div id="close">
+            <img class="close" src="/images/close.png" @click="popup('info')">
+        </div>
+        <div id="text">
+            <div id="report" v-show="show.info==='report'">{{report}}</div>
+            <div id="log" v-show="show.info==='log'">{{script}}</div>
+        </div>
+    </div><!--.info-->
+    <span>{{JSON.stringify(show)}}</span>
+    </div><!--#app-->
+</body>
+
+<script src="/cncVue3Model.js"></script>
+
+</html>

@@ -13,7 +13,7 @@ let cfg = {
     },
     site: {
         headers: { site: 'CNC Offline Controller Server' },
-        root: '../site'
+        root: '../../client'
     },
     ws: {
         serial: {

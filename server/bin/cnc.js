@@ -25,6 +25,7 @@ const http = require('http');
 const Scribe = require('./scribe');
 const { httpStatusMsg, mimeType } = require('./misc');
 const SerialWS = require('./wsSerial');
+const FileWS = require('./wsFileServer');
 
 // read the hosting configuration from (cmdline specified arg or default) JS or JSON file ...
 const cfg = require(process.argv[2] || '../restricted/config');
@@ -52,8 +53,8 @@ try {
             if (ctx.url==='/') ctx.url = '/index.html'; // adjust homepage
             // handle and send request...
             ctx.file = path.join(cfg.site.root,ctx.url);
-            scribe.trace(`File: ${ctx.file}`);
             ctx.headers['Content-type'] = mimeType(path.extname(ctx.file));
+            scribe.trace(`File[${ctx.headers['Content-type']}]: ${ctx.file}`);
             let data = await fsp.readFile(ctx.file);
             res.writeHead(200, ctx.headers);
             res.end(data);
@@ -75,12 +76,16 @@ try {
 if (!httpServer) process.exit();
 
 // web socket for serial...
-let wss = new SerialWS(cfg,Scribe);
+let wss = new SerialWS(cfg.ws.serial,Scribe);
+// web socket for file access...
+let wsf = new FileWS(cfg.ws.file,Scribe);
 
 httpServer.on('upgrade', function upgrade(request, socket, head){
-    if (request.url===cfg.ws.url) {
+    if (request.url===cfg.ws.serial.url) {
         wss.upgrade(request, socket, head);
-        } else {
-            socket.destroy();
-        }
-    });
+    } else if ((request.url===cfg.ws.file.url)) {
+        wsf.upgrade(request, socket, head);
+    } else {
+        socket.destroy();
+    }
+});

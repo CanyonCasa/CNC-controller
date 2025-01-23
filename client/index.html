@@ -7,10 +7,12 @@
 <title>CNC Controller</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/cnc.css">
-<script src="/wsCNC.js"></script>
 <script src="/cdn/Vue3/vue.3.5.13.js"></script>
 <script src="/cdn/Vue3/VueLib3.js"></script>
 <script src="/cncModelData.js"></script>
+<script src="/wsWrappers.js"></script>
+<!--<script src="/wsFileClient.js"></script>-->
+
 </head>
 
 <body>
@@ -22,14 +24,27 @@
             </div>
         </div><!--#menu-->
         <div v-show="activeTabView==='buttons'" class="tab button-grid">
-            <div class="button-item" v-if-class:empty="!b.label"  v-if-class:disabled="b.disabled"v-for="b in activeButtons" @click="pickButton(b)">
+            <div class="button-item" v-if-class:empty="!b.label"  v-if-class:disabled="b.disabled" v-for="b in activeButtons" @click="pickButton(b)">
                 <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" />
                 <span v-else v-html="b.label||''"></span>
             </div>
         </div><!--.tab class-->
+        <div v-show="activeTabView==='keyboard'" class="tab key-grid">
+            <div class="key-item" v-if-class:empty="!(b.label||b.key)"  v-if-class:disabled="b.disabled" v-for="b in activeButtons" 
+                @click="pickButton(b)">
+                <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" />
+                <span v-else v-html="b.label||b.key||''"></span>
+            </div>
+        </div><!--.tab class-->
+        <div class="cmd-grid" v-show="overlay=='cmd'">
+            <span id="cmd" class="cmd-item" v-if-class:empty="!cmd">{{cmd||'Type gcode to run...'}}</span>
+        </div>
         <div id="status" class="status-grid">
             <span class="status-item" v-for="s in status">{{s}}</span>
         </div><!--#status-->
+        <div class="file-grid" v-show="overlay=='file'">
+            <span class="file-item" v-for="d in fileDetails">{{d}}</span>
+        </div>
     </div><!--.content-->
     <div id="info" v-show="show.info">
         <div id="close">

@@ -1,18 +1,20 @@
 // Data for defining tabs and button layouts and function...
 
+let verbose = true; // for all console logging and transcripting
+
 var cncModelData = {
     params: {
         autoQuery: 'query', // false or name of query button, i.e. gcode=?
         gCodeInit: '$H; G54; G21',
         feed: 1000,
         feedMax: 2000,
-        jog: 1,
+        jog: 3,
         jogs: [0.01,0.1,1,10,100],
         spindleDirection: 'M3',
         spindleMotor: 'M5',
         spindleSpeed: 10000,
         spindleSpeedMax: 10000,
-        zProbeOffset: 19.08,
+        zProbeOffset: 19.15,
         alarm: '',
         bf: '',
         error: '',
@@ -22,25 +24,58 @@ var cncModelData = {
         state: '',
         units: 'mm',
         wco: '-,-,-',
-        status: [],
+        file: {
+            pseudo: '',
+            folder: '',
+            name: '',
+            size: 0,
+            lines: 0,
+            time: '',
+            date: '',
+            type: '',
+            root: '',
+            contents: ''
+        },
+        fileOverlayTemplates: [
+            "File: ${pseudo}","${size}/${lines}","${date}",
+            "","",""
+        ],
+        filesLocal: {
+            root: 'local',
+            label: '(local:)',
+            folder: '',
+            accept: '',
+        },
+        filesRemote: {
+            root: 'remote',
+            label: '(remote:)',
+            folder: '',
+            accept: '.nc'
+        },
+        filesUSB: {
+            root: 'usb',
+            label: '(USB:)',
+            folder: '',
+            accept: '.nc'
+        },
         statusTemplates: [
-            "M: ${mpos}","","J: ${jogs[jog]}${units}","MX: ${spindleMotor==='M5'?'OFF':'ON'}",
+            "M: ${mpos}","WS: ${wsEnabled?'OPEN':'CLSD'}","J: ${jogs[jog]}${units}","MX: ${spindleMotor==='M5'?'OFF':'ON'}",
             "W: ${wco}","S: ${spindleSpeed}","F: ${feed}","D: ${spindleDirection==='M4'?'CCW':'CW'}",
             "${msg}","${state}","A: ${alarm}","E: ${error}"
         ],
         transcriptLength: 100,
-        report: new Set()
+        wsEnabled: true
     },
     tabs: [
         {
             label: 'JOB',
             buttons: [
-                'home','file','usb','report','log',
-                'unlock','','','','',
-                'query','test','','','',
-                'reset','','resume','','pause'
+                'home','log','filesL','filesR','filesU',
+                'unlock','query','','','',
+                'reset','check','resume','run','pause',
+                '','','','',''
             ],
-            view: 'buttons'
+            overlay: 'file'
         },
         {
             label: 'MOVE',
@@ -61,13 +96,26 @@ var cncModelData = {
             ]
         },
         {
-            label: 'CUSTOM',
+            label: 'CMD',
+            view: 'keyboard',
             buttons: [
-                '','','','','',
-                '','','','','',
-                '','','','','',
-                '','','','',''
-            ]
+                [
+                    '','X','Y','Z','G','7','8','9','shft',
+                    '','M','L','P','#','4','5','6','$',
+                    '','H','J','','','1','2','3','',
+                    '','C','S','F',' ','-','0','.','=',
+                    '','','','','','','','bksp','enter' // note first 6 slots overlayed by commandline
+                ],
+                [
+                    '','','','','','7','8','9','shft',
+                    '','','','','','4','5','6','$',
+                    '','','','','','1','2','3','',
+                    '','','','',' ','-','0','.','=',
+                    '','','','','','','','bksp','enter' // note first 6 slots overlayed by commandline
+                ]
+            ],
+            shift: 0,
+            overlay: 'cmd'
         },
         {
             label: '',
@@ -83,8 +131,8 @@ var cncModelData = {
             buttons: [
                 'home','','setHome','setAlt','',
                 'unlock','','','','',
-                '','','','','',
-                'reset','','','',''
+                'query','machine','','','',
+                'reset','','test','','ws'
             ]
         }
     ],
@@ -96,10 +144,40 @@ var cncModelData = {
             action: 'gcode',
             gcode: 'G30 ?'
         },
+        bksp: {
+            label: 'BKSP',
+            img: '/images/bksp.png',
+            action: 'key',
+            key: 'bksp'
+        },
         check: {
             label: 'CHECK',
             action: 'gcode',
             gcode: '$C'
+        },
+        enter: {
+            label: 'Enter',
+            img: '/images/enter.png',
+            action: 'key',
+            key: 'enter'
+        },
+        filesL: {
+            label: 'File...<br>(local)',
+            action: 'call',
+            call: 'filesDialog',
+            args: ['filesLocal']
+        },
+        filesR: {
+            label: 'File...<br>(remote)',
+            action: 'call',
+            call: 'filesDialog',
+            args: ['filesRemote']
+        },
+        filesU: {
+            label: 'File...<br>(USB)',
+            action: 'call',
+            call: 'filesDialog',
+            args: ['filesUSB']
         },
         home: {
             label: 'Home',
@@ -128,29 +206,24 @@ var cncModelData = {
             call: 'popup',
             args: ['info','log']
         },
-        file: {
-            label: 'File...',
-            action: 'macro',
-            macro: 'file'
-        },
         machine: {
-            label: 'MACHINE',
-            action: 'gcode',
-            gcode: '$$'
-        },
+            label: 'CNC<br>REPORT',
+            action: 'macro',
+            macro: 'machine'
+         },
         mcw: {
+            disabled: true,
             label: 'FORWARD',
             action: 'param',
             param: 'spindleDirection',
-            value: 'M3',
-            disabled: true
+            value: 'M3'
         },
         mccw: {
+            disabled: true,
             label: 'REVERSE',
             action: 'param',
             param: 'spindleDirection',
-            value: 'M4',
-            disabled: true
+            value: 'M4'
         },
         moff: {
             label: 'OFF',
@@ -158,38 +231,47 @@ var cncModelData = {
             gcode: 'M5'
         },
         mon: {
+            disabled: true,
             label: 'ON',
             action: 'gcode',
             gcode: '${spindleDirection} S${spindleSpeed}'
         },
         m10: {
             label: '10%',
-            action: 'param',
-            param: 'spindleSpeed',
-            value: '1000'
+            action: 'macro',
+            macro: [
+                {action: 'param', param: 'spindleSpeed',value: '1000'},
+                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+            ]
         },
         m25: {
             label: '25%',
-            action: 'param',
-            param: 'spindleSpeed',
-            value: '2500'
+            action: 'macro',
+            macro: [
+                {action: 'param', param: 'spindleSpeed',value: '2500'},
+                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+            ]
         },
         m50: {
             label: '50%',
-            action: 'param',
-            param: 'spindleSpeed',
-            value: '5000'
+            action: 'macro',
+            macro: [
+                {action: 'param', param: 'spindleSpeed',value: '5000'},
+                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+            ]
         },
         m100: {
             label: '100%',
-            action: 'param',
-            param: 'spindleSpeed',
-            value: '10000'
+            action: 'macro',
+            macro: [
+                {action: 'param', param: 'spindleSpeed',value: '10000'},
+                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+            ]
         },
         pause: {
             label: 'PAUSE',
             action: 'gcode',
-            value: '!'
+            gcode: '!'
         },
         query: {
             label: 'QUERY',
@@ -198,12 +280,6 @@ var cncModelData = {
             action: 'gcode',
             gcode: '?'
         },
-        report: {
-            label: 'REPORT',
-            action: 'call',
-            call: 'popup',
-            args: ['info','report']
-         },
         reset: {
             label: 'RESET',
             action: 'reset'
@@ -211,7 +287,7 @@ var cncModelData = {
         resume: {
             label: 'RESUME',
             action: 'gcode',
-            value: '~'
+            gcode: '~'
         },
         setAlt: {
             label: 'Set<br>Alt Pos',
@@ -245,9 +321,16 @@ var cncModelData = {
             action: 'gcode',
             gcode: 'G10 L20 P0 X0 Y0 Z0 ?'
         },
+        shft: {
+            label: 'SHIFT KEY',
+            img: '/images/shift.png',
+            action: 'shift'
+        },
         unlock: {
             label: 'Unlock',
             img: '/images/unlock.png',
+            action: 'gcode',
+            gcode: '$X ?'
         },
         usb: {
             label: 'USB...',
@@ -255,9 +338,16 @@ var cncModelData = {
             macro: 'usb'
         },
         test: {
+            disabled: true,
             label: 'TEST',
             action: 'gcode',
-            gcode: '$G; $#; $I; $N; $$'
+            gcode: 'G90 X0 Y0 Z0 F${feed}'
+        },
+        ws: {
+            label: 'WS<br>TOGGLE',
+            action: 'call',
+            call: 'wsStatus',
+            args: [],
         },
         xminus: {
             label: 'X-',
@@ -308,16 +398,16 @@ var cncModelData = {
             params: ['jog']
         },
         zprobe: {
-            label: 'Z PROBE',
-            action: 'macro',
-            macro: 'zprobe'
+            label: 'Set<br>Z-PROBE',
+            action: 'gcode',
+            gcode: 'G38.2 Z-5 F50; G92 Z${zProbeOffset}; $J=G91 Z2 F1000; ?'
         }
     },
     macros: {
-        log: [],
-        report: [
-            { action: 'call', call: 'popup', args: ['info']  },           
-            { action: 'call', call: 'popup', args: ['report']  }               
+        machine: [
+            { action: 'gcode', gcode: '$G; $#; $I; $N; $$' },
+            { action: 'wait', wait: 500 },
+            { action: 'call', call: 'popup', args: ['info','report']  }               
         ]
     },
 };

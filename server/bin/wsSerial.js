@@ -7,21 +7,21 @@ const WebSocket = require('ws');
 
 
 function wsSerial(cfg,Scribe) {
-    this.scribble = Scribe(cfg.scribe);
     this.cfg = cfg;
-    // define serial cfg...
-    this.cfgSerial = Object.assign({},cfg.ws.serial,{autoOpen: false});
+    this.scribble = Scribe(cfg.scribe);
+    // define serial port cfg...
+    this.cfgPort = Object.assign({},cfg.port,{autoOpen: false});
     // define websock...
     this.wss = new WebSocket.Server({ noServer: true });
-    this.wss.on('error',err=>this.scribble.error(`WebsocketServer (WSS): ${err.toString()}`));
+    this.wss.on('error',err=>this.scribble.error(`Serial WebsocketServer (WSS): ${err.toString()}`));
 };
 
 wsSerial.prototype.upgrade = function upgrade(request, socket, head){
     this.wss.handleUpgrade(request, socket, head, (ws)=>{
         this.ws = ws;
         this.wss.emit('connection', ws, request);
-        ws.on('error',err=>this.scribble.error(`Websocket: ${err.toString()}`));
-        ws.on('close', ()=>{ this.scribble.warn('WebSocket closed!') });
+        ws.on('error',err=>this.scribble.error(`Serial Websocket: ${err.toString()}`));
+        ws.on('close', ()=>{ this.scribble.warn('Serial WebSocket closed!') });
         ws.on('message',(buf)=>{
             let msg = buf.toString().replace(/\r?\n|\r/g,'');
             this.scribble.extra(`> ${msg}`);
@@ -29,8 +29,8 @@ wsSerial.prototype.upgrade = function upgrade(request, socket, head){
                 this.port.write(buf);
             } catch(e) { this.scribble.error(e); this.ws.emit('serial', 'Write to serial port failed!'); }
             });
-        ws.on('serial',e=>{ this.ws.send(`error:${this.cfgSerial.path} !:${e.toString()}\r\n`); });
-        this.scribble.info('WebSocket open!');
+        ws.on('serial',e=>{ this.ws.send(`error:${this.cfgPort.path} !:${e.toString()}\r\n`); });
+        this.scribble.info('Serial WebSocket open!');
         this.notFoundReported = false;
         this.openSerial();
     });
@@ -38,9 +38,9 @@ wsSerial.prototype.upgrade = function upgrade(request, socket, head){
 
 wsSerial.prototype.openSerial = function() {
     if (!this.port) {   // initial open
-        this.port = (this.cfgSerial.path) ? (new SerialPort(this.cfgSerial)) : null;
+        this.port = (this.cfgPort.path) ? (new SerialPort(this.cfgPort)) : null;
         if (!this.port) return setTimeout(()=>{this.openSerial()},1000);
-        this.parser = this.port.pipe(new ReadlineParser({ delimiter: this.cfgSerial.delimiter||'\r\n' }));
+        this.parser = this.port.pipe(new ReadlineParser({ delimiter: this.cfgPort.delimiter||'\r\n' }));
         this.port.on('open',()=>{ this.scribble.extra('Serial Port opened!'); });
         this.port.on('close',()=>{
             this.scribble.warn('Serial Port closed!');
@@ -69,7 +69,7 @@ wsSerial.prototype.openSerial = function() {
             this.openingReported |= opening;
             if (!ready) setTimeout(()=>{this.openSerial()},1000);
         } else {
-            this.scribble.info(`Serial port '${this.cfgSerial.path}' opened!`);
+            this.scribble.info(`Serial port '${this.cfgPort.path}' opened!`);
             this.notFoundReported = false;
             this.openingReported = false;
         };

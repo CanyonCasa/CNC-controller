@@ -4,14 +4,20 @@
 Raspberry Pi, CNC, offline, controller, gcode, sender, grbl
 
 #### *Abstract*
-RPi-based offline CNC controller supporting Grbl 1.1 designed around a 5" (800x480 pixel) touch screen. The design implements a NodeJS web server running on the localhost (RPi) accessed from a browser running in kiosk mode. It utilizes vanilla HTML, CSS, JavaScript, and Vue3 with no dependencies aside from the node websocket library, simplifying modification and maintenance, customization. Use of a data model config file allow straightforward customization of all screen views (tabs). Use of a Websocket interface provides direct connection to a backend serial port (USB) enabling passing gcode from the web browser directly to the CNC machine. A second websocket provides access to files from multiple local, remote, and USB sources.
+RPi-based offline CNC controller supporting Grbl 1.1 designed around a bright 5" (800x480 pixel) touch screen. The design implements a NodeJS web server running on the localhost (RPi) accessed from a browser running in kiosk mode. It utilizes vanilla HTML, CSS, JavaScript, and Vue3 with no dependencies aside from the node websocket library, simplifying modification, maintenance, and customization. Use of a data model config file allow straightforward customization of all screen views (tabs). Use of a Websocket interface provides direct connection to a backend serial port (USB) enabling passing gcode from the web browser directly to the CNC machine. A second websocket provides access to files from multiple local, remote, and USB sources.
 
 ## <span style="color: red; font-weight: bold">NOTICE</span>
 <span style="color: red;">This design assumes operation on a local network to simplify user access (i.e no credentials or certificate management).
 **As such the controller should not be operated on the open Internet.**</span>
 
+#### Screenshot
+![alt screenshot](docs/job.jpg)
+
+
+More screenshots available in the docs folder.
+
 ## SERVER
-The [server/bin] cnc.js file, with various other libs, implements a NodeJS-based websever with WEbsockets. The server does not require any code modification for use, just proper definition of the[server/restricted] config.js file that provides all the setup needed to run. Before use install NodeJS and the NodeJS dependencies from the server/bin folder
+The [server/bin] cnc.js file, with various other libs, implements a NodeJS-based websever with Websockets. The server does not require any code modification for use, just proper definition of the[server/restricted] config.js file that provides all the setup needed to run. Before use install NodeJS and the NodeJS dependencies from the server/bin folder
 
 ```JavaScript
 \>npm  install serialport
@@ -31,7 +37,6 @@ Note, the server config file.
 ## CLIENT
 A basic HTML5 page with supporting scripts and a stylesheet serves as the client. The client uses (unbundled) Vue3 for building site page content based on the HTML template (index.html) and data provided in the client configuration file (cncModelData.js)
 
-### Views
 All views consist of a tab menu, button layout, status area, and optional overlays. Layout assumes a fixed 800x480 pixel screen, easily adjusted by CSS changes alone. The color theme may be changed also by simply changing variable definitions in the CSS file.
 
 ### Client Configuration Data
@@ -75,9 +80,74 @@ The buttons object defines the properties of each button. Values specified in th
       - 'call': Names an internal function called by the action.
       - 'args': An array of arguments passed to the function.
     - **action: 'key'**
-      - 'key': Defines the character for a key pressed (i.e. command keypad), including 2 special cases of 'enter' for the newline key and 'bksp' for backspace. Keystokes define the value of the commandline on the CMD tab.
+      - 'key': Defines the character for a key pressed (i.e. command keypad), including special cases of 'enter' for the newline key and 'bksp' for backspace 'hback' and 'hadv' for history backward and forward (advance), respectively. Other keys define the character entered the commandline on the CMD tab.
     - **action: 'shift'**
-      - Has no properties; signals the shifting of button layout cycling through all defined arrangements.
+      - Has no properties; signals the shifting of button layout cycling through all defined arrangements (sub arrays).
 
 #### Macros
 For organizational puposes. The optional macros section defines a set of macros referenced by buttons, where each macro key defines the reference used by a button and its value defines an array of objects with each object representing the equivalent of a button press.
+
+### Views
+The following represent pre-defined client views. Note that all views can be customized by altering, tab and button definitions in the cncModelData.js file.
+
+    Job
+    The job view represents the main operational screen and provides all functionality needed to prep the machine to run GCODE files.
+
+    Move
+    The Move tab provides functions for jogging the machine position and setting origin values for defining the work coordinate system.
+
+    Spindle
+    The Sprindle tab provides moter control operations, mainly for test purposes.
+
+    CMD
+    The CMD tag, or command tab, allows keyboard style entry of any GCODE commands including sending them to the machine. This includes a command history that can be recalled to repeat commands without retyping. 
+
+    Settings
+    The Settings tab includes machine settings less frequently adjusted.
+
+    "undefined"
+    The undefined or blank tab allows for user custimized functions.
+
+#### Status Pane
+The status or state pane sits at the bottom of all views. This provides basic command and machine state info, including (top to bottom, left to right):
+
+  - **M:** Machine x,y,z coordinates
+  - **W:** Working x,y,z coordinates
+  - [MSG] responses
+  - **WS:** Websocket connection status
+  - **S:** Machine x,y,z coordinates
+  - Latest reported machine State
+  - **J:** Current jogging step distance
+  - **F:** Current pindle feed rate
+  - **A:** Last alarm code 
+  - **MX:** Motor run state (under manual control)
+  - **D:** Motor direction, CW or CCW
+  - **E:** Last error code
+
+#### File Pane
+The file pane overlay on the job tab shows file stat info on the current file, if any file is loaded, which includes:
+
+  - **pseudo** Pseudo path to current file
+  - **size/lines** number of bytes of the file and gcode lines
+  - **datetime** File last modified date time stamp
+
+### Actions
+The CNC controller has a number of "predefined" functions and capabilities.
+
+  - **Run CNC Jobs**
+
+    The primary function is the ability to process CNC files (i.e. a job) and send the gcode instructions to the CNC machine. It generates a log of each job, which can be reviewed to diagnose problems.
+
+  - **Manual CNC MAchine Operation**
+  
+    The controller can send GRBL 1.1 commands necessary to manually position and operate the CNC to set workspace parameters such as a job origin.
+    
+
+  - **Configure CNC MAchine**
+
+    The controller can send any GRBL 1.1 commands necessary to the CNC to config it's function and behavior. As part of this a report function queries machine  configuration has captures it to a report file where it can be copied to the clipboard
+
+## TBD
+
+  - Improve the remote file capability
+  - Provide the ability to save job files, logs, and reports.

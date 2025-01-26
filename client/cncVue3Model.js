@@ -1,4 +1,6 @@
 // Vue3 functional model for cnc server ...
+// (C) 2025 Enchanted Engineering
+const VERSION = 1.00;   // 20250126 dvc Initial release
 
 // wrapper function to evaluate template literals...
 const templafy = (template, vars = {}) => {
@@ -22,7 +24,7 @@ const cnc = Vue.createApp({
         activeTabView: 'buttons',
         cmd: '',
         cmdHistory: [],
-        cmdHistoryIndex: 1,
+        cmdHistoryIndex: 0,
         reportSet: {},
         show: {
             info: '',
@@ -38,7 +40,8 @@ const cnc = Vue.createApp({
             sent: [],
         },
         files: [],
-        filesParentIndex: -1
+        filesParentIndex: -1,
+        listingOffset: 0
         }},
     computed: {
         activeButtons() { 
@@ -47,11 +50,18 @@ const cnc = Vue.createApp({
             if (tab.view==='keyboard') return buttons.map(b=>b==='' ? {} : this.buttons[b]||{action:'key',key:b});
             return buttons.map(b=>b==='' ? {} : this.buttons[b]||{label:`${b}?`});
         },
+        fileButtons() { return Object.keys(this.params.fileButtons).map(k=>this.buttons[this.params.fileButtons[k]]); },
         fileDetails() { return (this.params.fileOverlayTemplates || []).map(t=>templafy(t,this.params.file)); },
         listing() {
             let list = (this.filesParentIndex<0) ? this.files : this.files[this.filesParentIndex].listing;
             return [...(list.map((f,i)=>(f.type==='dir'?{i:i,n:`[${f.name}]`}:null)).filter(x=>x)),
                     ...(list.map((f,i)=>(f.type==='file'?{i:i,n:f.name}:null)).filter(x=>x))];
+        },
+        subListing() {
+            console.log('lstng:',this.listing)
+            let tmp = [...this.listing.slice(this.listingOffset*6),...[{},{},{},{},{},{}]].slice(0,6);
+            console.log('tmp:',tmp)
+           return tmp; 
         },
         overlay() { return this.tabs[this.activeTab].overlay || '' },
         report() { return 'Machine Report...\n' + Object.entries(this.reportSet).map(e=>`  ${e[0]}: ${e[1]}`).join('\n')+'\n...End of Report'; },
@@ -72,7 +82,7 @@ const cnc = Vue.createApp({
                     .reduce((x,s,i,a)=>{let [k,v]=s.split(':'); x[k.toLowerCase()]=v; return x},{});
                 Object.keys(state).forEach(k=>{this.params[k] = state[k];});
                 last = ('wco' in state) ? 'wco' : null;
-                if (this.params.autoQuery && !('wco' in state)) setTimeout(()=>this.pickButton(this.buttons[this.params.autoQuery],1000));
+                if (!this.job.active && this.params.autoQuery && !('wco' in state)) setTimeout(()=>this.pickButton(this.buttons[this.params.autoQuery],1000));
             } else if (text.startsWith('[')) { 
                 let msg = text.slice(1,-1);
                 if (msg.match(/G[0-9]+|TL0|PRB|VER|OPT/)) {
@@ -105,17 +115,36 @@ const cnc = Vue.createApp({
             };
         },
         filePick(index){
-            let file = this.filesParentIndex === -1 ? this.files[index] : this.files[this.filesParentIndex].listing[index];
-            console.log('filePick:',index,file);
-            switch (file.type) {
-                case 'file':
+            switch (index) {
+                case 'next':
+                    let total = (this.filesParentIndex === -1 ? this.files : this.files[this.filesParentIndex].listing).length;
+                    console.log('*offset:',this.listingOffset, total)
+                    if (total > 6*(this.listingOffset+1)) this.listingOffset += 1;
+                    console.log('offset*:',this.listingOffset)
+                    break;
+                case 'previous':
+                    console.log('*offset:',this.listingOffset)
+                    if (this.listingOffset > 0) this.listingOffset -= 1;
+                    console.log('offset*:',this.listingOffset)
+                    break;
+                case 'close':
                     this.show.listing = '';
-                    this.filesParentIndex = -1;
-                    window.fileRequest({action: 'get', meta: file});
+                    this.listingOffset = 0;
                     break;
-                case 'dir':
-                    this.filesParentIndex = index;
-                    break;
+                default:
+                    let file = this.filesParentIndex === -1 ? this.files[index] : this.files[this.filesParentIndex].listing[index];
+                    console.log('filePick:',index,file);
+                    switch (file.type) {
+                        case 'file':
+                            this.show.listing = '';
+                            this.listingOffset = 0;
+                            this.filesParentIndex = -1;
+                            window.fileRequest({action: 'get', meta: file});
+                            break;
+                        case 'dir':
+                            this.filesParentIndex = index;
+                            break;
+                    };
             };
         },
         fileResponse(msg) {
@@ -184,23 +213,22 @@ const cnc = Vue.createApp({
                     switch (b.key) {
                         case 'bksp': this.cmd = this.cmd.slice(0,-1); break;
                         case 'enter': 
-                            console.log(`cmd: ${this.cmd}, ${this.cmdHistory.length}, ${this.params.cmdHistoryLength}`)
                             await this.pickButton({action: 'gcode', gcode: this.cmd}); 
                             this.cmdHistory.push(this.cmd);
                             if (this.cmdHistory.length>this.params.cmdHistoryLength) this.cmdHistory.shift();
                             this.cmd = '';
-                            this.cmdHistoryIndex = 1;
+                            this.cmdHistoryIndex = this.cmdHistory.length;
                             break;
-                        case 'h-':
-                            this.cmd = this.cmdHistory[this.cmdHistory.length-this.cmdHistoryIndex] || '';
-                            this.cmdHistoryIndex = Math.min(this.cmdHistory.length,this.cmdHistoryIndex+1);
-                            console.log(`index: ${this.cmdHistoryIndex}, ${this.cmd}`)
-                        case 'h+':
-                            this.cmd = this.cmdHistory[this.cmdHistory.length-this.cmdHistoryIndex] || '';
+                        case 'hback':
                             this.cmdHistoryIndex = Math.max(0,this.cmdHistoryIndex-1);
-                            console.log(`index: ${this.cmdHistoryIndex}, ${this.cmd}`)
+                            this.cmd = this.cmdHistory[this.cmdHistoryIndex] || '';
                             break;
-                        default: this.cmd += b.key;
+                        case 'hadv':
+                            this.cmdHistoryIndex = Math.min(this.cmdHistory.length+1,this.cmdHistoryIndex+1);
+                            this.cmd = this.cmdHistory[this.cmdHistoryIndex] || '';
+                            break;
+                        default: 
+                            this.cmd += b.key;
                     };                 
                     //window.document.getElementById('cmd').value = this.cmd;
                     break;

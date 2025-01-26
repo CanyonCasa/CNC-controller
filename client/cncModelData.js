@@ -22,7 +22,7 @@ var cncModelData = {
         fs: '',
         mpos: '-,-,-',
         msg: '',
-        state: '',
+        state: '?',
         units: 'mm',
         wco: '-,-,-',
         file: {
@@ -64,6 +64,7 @@ var cncModelData = {
             folder: '',
             accept: '.nc, .cnc, .gcode'
         },
+        fileButtons: { close:'fClose', previous: 'fPrev', next: 'fNext' },
         statusTemplates: [
             "M: ${mpos}","WS: ${wsEnabled?'OPEN':'CLSD'}","J: ${jogs[jog]}${units}","MX: ${spindleMotor==='M5'?'OFF':'ON'}",
             "W: ${wco}","S: ${spindleSpeed}","F: ${feed}","D: ${spindleDirection==='M4'?'CCW':'CW'}",
@@ -109,7 +110,7 @@ var cncModelData = {
                     '','X','Y','Z','G','7','8','9','shft',
                     '','M','L','P','#','4','5','6','$',
                     '','H','J','S','F','1','2','3',' ',
-                    'h-','h+','','','C','-','0','.','=',
+                    'hback','hadv','','','C','-','0','.','=',
                     '','','','','','','','bksp','enter' // note first 6 slots overlayed by commandline
                 ],
                 [
@@ -146,19 +147,20 @@ var cncModelData = {
         alt: {
             label: 'Alt Pos',
             img: '/images/center.png',
-            title: 'Goto Alternate Position',
+            title: 'Goto Alternate Position (Center)',
             action: 'gcode',
             gcode: 'G30 ?'
         },
         bksp: {
             label: 'BKSP',
-            img: '/images/bksp.png',
+            img: '/images/undo.png',
             title: 'backspace',
             action: 'key',
             key: 'bksp'
         },
         check: {
-            label: 'CHECK<br>TOGGLE',
+            label: 'CHECK<br>MODE',
+            title: 'Toggle GCODE check mode',
             action: 'gcode',
             gcode: '$C'
         },
@@ -169,26 +171,61 @@ var cncModelData = {
             action: 'key',
             key: 'enter'
         },
+        fClose: {
+            // used by the file dialog
+            label: 'Close',
+            title: 'Close Files Dialog',
+            img: '/images/close.png',
+            action: 'close'
+        },
+        fNext: {
+            // used by the file dialog
+            label: 'Next',
+            title: 'Show next group of files',
+            img: '/images/down.png',
+            action: 'next'
+        },
+        fPrev: {
+            // used by the file dialog
+            label: 'Previous',
+            img: '/images/up.png',
+            title: 'Show previous group of files',
+            action: 'previous'
+        },
         filesL: {
             label: 'File...<br>(local)',
-            title: 'List files from local source',
+            title: 'List local files',
             action: 'call',
             call: 'filesDialog',
             args: ['filesLocal']
         },
         filesR: {
             label: 'File...<br>(remote)',
-            title: 'List files from remote source',
+            title: 'List remote files',
             action: 'call',
             call: 'filesDialog',
             args: ['filesRemote']
         },
         filesU: {
             label: 'File...<br>(USB)',
-            title: 'List files from USB drive',
+            title: 'List USB files',
             action: 'call',
             call: 'filesDialog',
             args: ['filesUSB']
+        },
+        hback: {
+            label: 'Back',
+            img: '/images/history_back.png',
+            title: 'History backwards',
+            action: 'key',
+            key: 'hback'
+        },
+        hadv: {
+            label: 'Forward',
+            img: '/images/history_forward.png',
+            title: 'History forwards',
+            action: 'key',
+            key: 'hadv'
         },
         home: {
             label: 'Home',
@@ -215,7 +252,7 @@ var cncModelData = {
         },
         log: {
             label: 'GCODE<br>LOG',
-            title: 'Display the GCODE log',
+            title: 'Display GCODE log',
             action: 'call',
             call: 'popup',
             args: ['info','log']
@@ -306,6 +343,7 @@ var cncModelData = {
         },
         reset: {
             label: 'RESET',
+            img: '/images/resetrd.png',
             title: 'Perform a soft-reset (CTRL-X)',
             action: 'reset'
         },
@@ -359,7 +397,7 @@ var cncModelData = {
         },
         unlock: {
             label: 'Unlock',
-            title: '?Unlock machine',
+            title: 'Unlock machine',
             img: '/images/unlock.png',
             action: 'gcode',
             gcode: '$X ?'
@@ -404,7 +442,7 @@ var cncModelData = {
         yminus: {
             label: 'Y-',
             img: '/images/y-.png',
-            title: 'Y BOTTOM',
+            title: 'Y FRONT',
             action: 'gcode',
             gcode: '$J=G91 Y-${jogs[jog]} F${feed}',
             params: ['jog']
@@ -412,7 +450,7 @@ var cncModelData = {
         yplus: {
             label: 'Y+',
             img: '/images/y+.png',
-            title: 'Y TOP',
+            title: 'Y BACK',
             action: 'gcode',
             gcode: '$J=G91 Y${jogs[jog]} F${feed}',
             params: ['jog']

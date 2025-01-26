@@ -226,15 +226,15 @@ div#text {
 
 .listing-grid {
     display: grid;
-    grid-template-columns: repeat(3,33%);
+    grid-template-columns: 350px 350px 80px;
+    grid-template-rows: repeat(3,30%);
+    grid-auto-flow: column;
     column-gap: 6px;
-    row-gap: 4px;
+    row-gap: 6px;
     width: 786px;
     height: 232px;
-    padding: 3px 5px;
-    align-items: stretch;
-    justify-items: stretch;
-    font-size: 20px;
+    padding: 4px;
+    font-size: 24px;
     font-weight: bolder;
     z-index: 10;
     position: absolute;
@@ -248,16 +248,14 @@ div#text {
     color: var(--dark-text);
     background-color: var(--light-bg);
     padding: 4px;
-    align-items: center;
-}
-.listing-item span {
-    display: inline-flex;
     height: -webkit-fill-available;
-    align-items: center;
+    align-content: center;
 }
-
+.listing-item.btn {
+    justify-self: center;
+}
 .listing-item.empty {
-    background-color: var(--light-bg);
+    background-color: var(--shade);
     border: none;
 }
 

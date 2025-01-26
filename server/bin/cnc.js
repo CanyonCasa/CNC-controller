@@ -1,18 +1,22 @@
+// (C) 2025 Enchanted Engineering
+const VERSION = 1.00;   // 20250126 dvc Initial release
+
 /*
 A simple web server for a RPi based CNC offline controller
 This server has no external framework dependencies, only serialport library, and ... 
   * Performs request logging
-  * Serves basic file content: HTML, CSS, JS, JSON, JPG
+  * Serves basic file content: HTML, CSS, JS, JSON, JPG, PNG, ...
   * Implements a web socket for serial communication with the CNC
+  * Implements a web socket for file loadig and saving
   * Error handling
 
-SYNTAX (from within the bin folder):
-    node cnc [<configuration_file>]
+SYNTAX
+    node <path-to-server-bin>/cnc [<configuration_file>]
 
     where <configuration_file> defaults to ../restricted/config[.js or .json]
-    and expects a ../logs folder.
+    The app expects a ../logs folder as well, unless defined deferently in config file.
 
-SECURITY: NOT for use on the open Internet! DO NOT place config in document root!
+SECURITY: NOT SECURE! NOT for use on the open Internet! DO NOT place config in document root!
 */
 
 
@@ -45,7 +49,6 @@ const cfg = require(process.argv[2] || '../restricted/config');
 
 // Scribe instance...
 const scribe = Scribe(cfg.scribe);  // must load config first
-const VERSION = 1.00;
 scribe.info(`CNC Offline Controller Server[${VERSION}] setup ...`);
 
 // web server...

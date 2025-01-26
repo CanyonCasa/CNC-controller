@@ -11,7 +11,6 @@
 <script src="/cdn/Vue3/VueLib3.js"></script>
 <script src="/cncModelData.js"></script>
 <script src="/wsWrappers.js"></script>
-<!--<script src="/wsFileClient.js"></script>-->
 
 </head>
 
@@ -25,14 +24,14 @@
         </div><!--#menu-->
         <div v-show="activeTabView==='buttons'" class="tab button-grid">
             <div class="button-item" v-if-class:empty="!b.label"  v-if-class:disabled="b.disabled" v-for="b in activeButtons" @click="pickButton(b)">
-                <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" />
+                <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" alt="?"/>
                 <span v-else v-html="b.label||''"></span>
             </div>
         </div><!--.tab class-->
         <div v-show="activeTabView==='keyboard'" class="tab key-grid">
             <div class="key-item" v-if-class:empty="!(b.label||b.key)"  v-if-class:disabled="b.disabled" v-for="b in activeButtons" 
                 @click="pickButton(b)">
-                <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" />
+                <img v-if="b.img" class="button-img" :title="b.title" :src="b.img" alt="?"/>
                 <span v-else v-html="b.label||b.key||''"></span>
             </div>
         </div><!--.tab class-->
@@ -42,13 +41,18 @@
         <div id="status" class="status-grid">
             <span class="status-item" v-for="s in status">{{s}}</span>
         </div><!--#status-->
-        <div class="file-grid" v-show="overlay=='file'">
+        <div class="file-grid" v-show="overlay=='file' && !show.info">
             <span class="file-item" v-for="d in fileDetails">{{d}}</span>
+        </div>
+        <div class="listing-grid" v-show="show.listing">
+            <span class="listing-item" v-for="f in listing" @click="filePick(f.i)">{{f.n}}</span>
         </div>
     </div><!--.content-->
     <div id="info" v-show="show.info">
         <div id="close">
-            <img class="close" src="/images/close.png" @click="popup('info')">
+            <img class="trash" src="/images/trash.png" @click="trash()" alt="?"/>
+            <img class="clip" src="/images/clip.png" @click="clip(show.info)" alt="?"/> 
+            <img class="close" src="/images/close.png" @click="popup('info')" alt="?"/> 
         </div>
         <div id="text">
             <div id="report" v-show="show.info==='report'">{{report}}</div>
@@ -57,8 +61,10 @@
     </div><!--.info-->
     <span>{{JSON.stringify(show)}}</span>
     </div><!--#app-->
+
+    <script src="/cncVue3Model.js"></script>
+
 </body>
 
-<script src="/cncVue3Model.js"></script>
 
 </html>

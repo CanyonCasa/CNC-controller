@@ -181,13 +181,14 @@ div#text {
     font-family: 'Andale mono', monospace;
 }
 
-.close { 
-    float:right;
+.clip, .trash, .close { 
     width: 48px;
     height: 48px;
     padding: 16px;
     background-color: var(--shade);
 }
+.close { float:right; }
+
 #log, #report {
     font-family: 'Andale mono', monospace;
     white-space: pre;
@@ -197,24 +198,67 @@ div#text {
 
 .file-grid {
     display: grid;
-    grid-template-columns: 400px 130px 260px;
+    grid-template-columns: 424px 150px 212px;
     grid-template-rows: repeat(2,35px);
     row-gap: 0px;
     max-width: 786px;
     padding: 3px 5px;
     justify-items: stretch;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bolder;
     z-index: 10;
     position: absolute;
     bottom: 80px;
     background-color: var(--shade);
     border: 1px solid var(--dark-border);
-
     font-family: 'Andale mono', monospace;
 }
 .file-item {
+    text-align: right;
+    padding-top: 4px;
+    overflow: hidden;
+    max-width: 100%;
+}
+.file-item:first-child {
     text-align: left;
+}
+
+
+.listing-grid {
+    display: grid;
+    grid-template-columns: repeat(3,33%);
+    column-gap: 6px;
+    row-gap: 4px;
+    width: 786px;
+    height: 232px;
+    padding: 3px 5px;
+    align-items: stretch;
+    justify-items: stretch;
+    font-size: 20px;
+    font-weight: bolder;
+    z-index: 10;
+    position: absolute;
+    top: 80px;
+    background-color: var(--shade);
+    font-family: 'Andale mono', monospace;
+}
+.listing-item {
+    border: 3px solid var(--dark-border);
+    border-radius: 8px;
+    color: var(--dark-text);
+    background-color: var(--light-bg);
+    padding: 4px;
+    align-items: center;
+}
+.listing-item span {
+    display: inline-flex;
+    height: -webkit-fill-available;
+    align-items: center;
+}
+
+.listing-item.empty {
+    background-color: var(--light-bg);
+    border: none;
 }
 
 .cmd-grid {

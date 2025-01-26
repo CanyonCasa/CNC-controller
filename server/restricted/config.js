@@ -1,6 +1,7 @@
 let cfg = {
     host: 'localhost',  // host name for the server
     port: '80',         // server port, may require permissions
+    chunk:  8192,       // max data chunk size; larger files compressed and streamed
     log$: "RQST[${ctx.method}] ${ctx.href}",    // template for logging requests
 scribe: {                               // parameters for the built in logger
         tag: 'CNC',                     // unique top-level tag for transcript output
@@ -18,6 +19,7 @@ scribe: {                               // parameters for the built in logger
     ws: {                               // websockets parameters
         serial: {                       // serial port websocket
             port: {                     // port parameters
+                alias: 'CNC',           // optional alias for error reporting
                 delimiter: '\r\n',      // line delimiter; may be CNC specific
                 path: 'COM10',          // port identifier, likely /dev/ttyACM0 on RPi
                 baudRate: 115200        // serial baudrate; may be CNC specific

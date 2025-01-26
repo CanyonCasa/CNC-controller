@@ -29,7 +29,7 @@ wsSerial.prototype.upgrade = function upgrade(request, socket, head){
                 this.port.write(buf);
             } catch(e) { this.scribble.error(e); this.ws.emit('serial', 'Write to serial port failed!'); }
             });
-        ws.on('serial',e=>{ this.ws.send(`error:${this.cfgPort.path} !:${e.toString()}\r\n`); });
+        ws.on('serial',e=>{ this.ws.send(`error:${this.cfgPort.alias||this.cfgPort.path} !:${e.toString()}\r\n`); });
         this.scribble.info('Serial WebSocket open!');
         this.notFoundReported = false;
         this.openSerial();

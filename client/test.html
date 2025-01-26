@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+
+<head>
+<meta charset="UTF-8">
+<title>CNC Controller</title>
+
+<script>
+        let uuid = () => Math.random().toString().slice(2);
+        function getHeaders(response) {
+            var hdrs={};
+            for (var k of response.headers.keys()) { hdrs[k]=response.headers.get(k); };
+            return hdrs;
+        };
+        async function getURL(src) {
+            return new Promise(resolve => {
+                let options = { method:'get', id: uuid(), url: src[0], size: src[1], headers: { 'Accept': '*/*'} };
+                console.log(`rqst[${options.id}]: ${options.url}`);
+                fetch(options.url,options)
+                    .then(async response=>{
+                        console.log(response);
+                        let headers = getHeaders(response);
+                        let data, size;
+                        try { data = await response.bytes(); size=data.length; } catch(e) { };
+                        if (size !== options.size) {
+                            console.error(`rply[${options.id},${options.url},${headers['content-length']||headers['transfer-encoding']}]: ${size}:${options.size}`);
+                            console.error(options.url,headers);
+                        } else {
+                            console.log(`rply[${options.id},${options.url},${headers['content-length']||headers['transfer-encoding']}]: ${size}:${options.size}`);
+                            console.log(options.url,headers);
+                        };
+                        resolve(`rply[${options.id}]: ${options.url} => ${size === options.size}`);
+                    })
+                    .catch(e => {
+                        console.error(`catch[${url}]: ${e.toString()}`);
+                        resolve('?');
+                    });
+            });
+        };
+        let src = [
+           ["/test.html", 2579],
+           ["/cnc.css", 6073],
+           ["/cdn/Vue3/vue.3.5.13.js", 562700],
+           ["/cdn/Vue3/VueLib3.js", 31399],
+           ["/cncModelData.js", 12289],
+           ["/wsWrappers.js", 3005],
+           ["/images/close.png", 1581],
+           ["/images/clip.png", 1346],
+           ["cncVue3Model.js", 13712],
+           ["/favicon.ico", 4286]
+        ]
+
+        let getURLs = async(a) => {
+            let results = await Promise.all(a.map(getURL));
+            return results;
+        }
+        getURLs(src).then(results=>console.log(results)).catch(e={});
+</script>
+
+</head>
+
+<body>
+<p>none</p>
+</body>
+</html>

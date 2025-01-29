@@ -14,25 +14,39 @@ RPi-based offline CNC controller supporting Grbl 1.1 designed around a bright 5"
 ![alt screenshot](docs/job.jpg)
 
 
-More screenshots available in the docs folder.
+More screenshots available in the [docs](docs) folder.
+
+## Raspberry Pi Setup
+The web provides plenty of tutorials on Raspberry Pi setup, which goes beyond the scope of this project. The setup requires the full Raspberry Pi OS Desktop install, not the lite version. The items below may assist in this application. See [RPi Scripts](rpi_scripts) for example scripts and configuration info. Note, script permissions may be needs to execute.
+
+  - **SSH**: Make sure Secure Shell (SSH) is enabled to access the controller remotely.
+  - **tmux**: Installing and configuring tmux makes it possible to perform lasting shell operations, such as running the server, which do not end when the remote login session ends. Install tmux and then enable and start the (/etc/systemd/system) tmux.service. It will run the (/usr/local/bin) tmuxuser script and start a tmux session for each user having a .tmux.init file in their home directory when the RPi boots. When starting a SSH session run (/usr/local/bin) gotmux to reconnect to the prior session.
+  - **fonts**: Prefered web fonts, such as the default AndaleMono may need to be installed in /usr/share/fonts/...
+  - **node**: You may need to install node. If using nvm or other version manager, you will need to provide a link to the version you wish to use for non-interactive bash shells, such as tmux panes.
+    - **libs**: Node requires the additional install of the serialport and websockets libraries, under the CNC-controller server bin folder.
 
 ## SERVER
-The [server/bin] cnc.js file, with various other libs, implements a NodeJS-based websever with Websockets. The server does not require any code modification for use, just proper definition of the[server/restricted] config.js file that provides all the setup needed to run. Before use install NodeJS and the NodeJS dependencies from the server/bin folder
+The [server/bin] cnc.js file, with various other libs, implements a NodeJS-based websever with Websockets. The server does not require any code modification for use, just proper definition of the[server/restricted] config.js file that provides all the setup needed to run. Before use install NodeJS. Then install the NodeJS dependencies from the CNC-controller/server/bin folder, which will place the modules in the node_modules folder under bin.
 
-```JavaScript
-\>npm  install serialport
-\>npm  install ws
+```bash
+    npm install serialport
+    npm install ws
 ```
+
 To start the server simply run:
 
-```JavaScript
-\>node \<path-to-bin\>/cnc [../restricted/config.js]
+```bash
+    node \<path-to-bin\>/cnc [../restricted/config.js]
 ```
 <span style="color: aqua;">NOTE: This assumes the default location of the config file. The config.js file should not be under the root documents folder.</span>
 
-Note, the server config file.
-
 <span style="color: aqua;">Tip: Run the server in a TMUX pane to have it stay running after logging out of the RPi.</span>
+
+### Issues
+
+**PORT 80 Access**: You may want to change the server port number >1000 to avoid using a priviledged port OR use IPTABLES to redirect port 80 to a higher port transparently.
+
+**NodeJS Install**: If you install NodeJS with a package manager such as nvm you will need to create a link to the appropriate version for running in a tmux pane launched from a systemd service (i.e. in a non-interactive shell),
 
 ## CLIENT
 A basic HTML5 page with supporting scripts and a stylesheet serves as the client. The client uses (unbundled) Vue3 for building site page content based on the HTML template (index.html) and data provided in the client configuration file (cncModelData.js)
@@ -52,7 +66,7 @@ The parameters section defines variables used in defining layout, parsing action
 #### Tabs
 Each view is referenced as a tab, which aggregates like functions. The layout fixes the number of tabs at 5; however, this could be adjusted based on user preferences. Each tab can have the following properties:
   - **label**: This defines the text dsiplayed for the label.
-  - **buttons**: This defines the reference for buttons displayed on the tab. This has two forms:
+  - **buttons**: This defines the reference for buttons displayed on the tab. The array has two forms:
     1. A simple one dimensional array that sequentially lists the keys, where an empty field ('') skips a given position. The shift property must not be defined for this form.
     2. A two dimensional array, where each outer element is a button layout. This form requires the presence of the shift property  which determines the set of buttons displayed.
   - **view**: This property selects an alternate view for the button layout, default "buttons" when not defined. The defined CMD tab uses "keyboard" view.
@@ -73,16 +87,16 @@ The buttons object defines the properties of each button. Values specified in th
     - **action: 'macro'**
       - 'macro': May be a string referencing a macro from the macro definitions OR an array of objects specifying the actions and properties to take. A macro is analogous to a series of button presses.
     - **action: 'reset'**
-      - Has no properties; used to send a CTRL-X character to the CNC to perform a soft-reset.
+      - Has no properties; used to send a special CTRL-X character to the CNC to perform a soft-reset.
     - **action: 'wait'**
-      - 'wait': For macros, wait pecifies a delay time in milliseconds before executing the next action.
+      - 'wait': For macros, wait specifies a delay time in milliseconds before executing the next action.
     - **action: 'call'**
-      - 'call': Names an internal function called by the action.
+      - 'call': Names an internal function called by the action. Use with caution.
       - 'args': An array of arguments passed to the function.
     - **action: 'key'**
-      - 'key': Defines the character for a key pressed (i.e. command keypad), including special cases of 'enter' for the newline key and 'bksp' for backspace 'hback' and 'hadv' for history backward and forward (advance), respectively. Other keys define the character entered the commandline on the CMD tab.
+      - 'key': Defines the character for a key pressed (i.e. command keypad), including special cases of 'enter' for the newline key, 'bksp' for backspace 'hback' for history backward, and 'hadv' for history forward (advance). Other keys define the character entered the commandline on the CMD tab.
     - **action: 'shift'**
-      - Has no properties; signals the shifting of button layout cycling through all defined arrangements (sub arrays).
+      - Has no properties; signals the shifting of button layout cycling through all defined arrangements (sub arrays) of the tabs buttons definition.
 
 #### Macros
 For organizational puposes. The optional macros section defines a set of macros referenced by buttons, where each macro key defines the reference used by a button and its value defines an array of objects with each object representing the equivalent of a button press.
@@ -149,5 +163,6 @@ The CNC controller has a number of "predefined" functions and capabilities.
 
 ## TBD
 
-  - Improve the remote file capability
-  - Provide the ability to save job files, logs, and reports.
+  - Fix the remote file capability to tunnel through server
+  - Provide the ability to save job files, logs, and reports whereever.
+  - RPi control: reboot, halt, wtype?, restart kiosk?

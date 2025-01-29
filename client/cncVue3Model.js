@@ -1,6 +1,7 @@
 // Vue3 functional model for cnc server ...
 // (C) 2025 Enchanted Engineering
-const VERSION = 1.00;   // 20250126 dvc Initial release
+//const VERSION = 1.00;   // 20250126 dvc Initial release
+const VERSION = 1.10;   // 20250129 dvc Port to RPi
 
 // wrapper function to evaluate template literals...
 const templafy = (template, vars = {}) => {
@@ -28,7 +29,8 @@ const cnc = Vue.createApp({
         reportSet: {},
         show: {
             info: '',
-            listing: ''
+            listing: '',
+            rpi: ''
         },
         transcript: [],
         transcriptLevel: verbose ? 2 : 1,   // 0: minimal; 1: normal; 2: verbose
@@ -39,8 +41,7 @@ const cnc = Vue.createApp({
             lineIndex: 0,
             sent: [],
         },
-        files: [],
-        filesParentIndex: -1,
+        listing: [],
         listingOffset: 0
         }},
     computed: {
@@ -52,26 +53,21 @@ const cnc = Vue.createApp({
         },
         fileButtons() { return Object.keys(this.params.fileButtons).map(k=>this.buttons[this.params.fileButtons[k]]); },
         fileDetails() { return (this.params.fileOverlayTemplates || []).map(t=>templafy(t,this.params.file)); },
-        listing() {
-            let list = (this.filesParentIndex<0) ? this.files : this.files[this.filesParentIndex].listing;
-            return [...(list.map((f,i)=>(f.type==='dir'?{i:i,n:`[${f.name}]`}:null)).filter(x=>x)),
-                    ...(list.map((f,i)=>(f.type==='file'?{i:i,n:f.name}:null)).filter(x=>x))];
+        listingSorted() {
+            return [...(this.listing.map((f,i)=>(f.type==='dir'?{i:i,n:`[${f.name}]`}:null)).filter(x=>x)),
+                    ...(this.listing.map((f,i)=>(f.type==='file'?{i:i,n:f.name}:null)).filter(x=>x))];
         },
-        subListing() {
-            console.log('lstng:',this.listing)
-            let tmp = [...this.listing.slice(this.listingOffset*6),...[{},{},{},{},{},{}]].slice(0,6);
-            console.log('tmp:',tmp)
-           return tmp; 
-        },
+        subListing() { return [...this.listingSorted.slice(this.listingOffset*6),...[{},{},{},{},{},{}]].slice(0,6); },
         overlay() { return this.tabs[this.activeTab].overlay || '' },
         report() { return 'Machine Report...\n' + Object.entries(this.reportSet).map(e=>`  ${e[0]}: ${e[1]}`).join('\n')+'\n...End of Report'; },
         script() { return this.transcript.join('\n'); },
         status() { return (this.params.statusTemplates || []).map(t=>templafy(t,this.params)); },
+        wsMsg() { return this.params.wsEnabled ? 'OFF' : 'ON' }
     },
     methods: {
         cncRX(text) {
             let last = '';
-            if (verbose) console.log(`> ${text}`);
+            if (verbose) console.log(`[cncRX]> ${text}`);
             if (text==='ok') { 
                 this.params.error = 'OK';
                 this.params.alarm = 'OK';
@@ -117,44 +113,35 @@ const cnc = Vue.createApp({
         filePick(index){
             switch (index) {
                 case 'next':
-                    let total = (this.filesParentIndex === -1 ? this.files : this.files[this.filesParentIndex].listing).length;
-                    console.log('*offset:',this.listingOffset, total)
-                    if (total > 6*(this.listingOffset+1)) this.listingOffset += 1;
-                    console.log('offset*:',this.listingOffset)
+                    if (this.listingSorted.length > 6*(this.listingOffset+1)) this.listingOffset += 1;
                     break;
                 case 'previous':
-                    console.log('*offset:',this.listingOffset)
                     if (this.listingOffset > 0) this.listingOffset -= 1;
-                    console.log('offset*:',this.listingOffset)
                     break;
                 case 'close':
                     this.show.listing = '';
                     this.listingOffset = 0;
                     break;
                 default:
-                    let file = this.filesParentIndex === -1 ? this.files[index] : this.files[this.filesParentIndex].listing[index];
-                    console.log('filePick:',index,file);
+                    let file = this.listing[index];
                     switch (file.type) {
                         case 'file':
                             this.show.listing = '';
                             this.listingOffset = 0;
-                            this.filesParentIndex = -1;
                             window.fileRequest({action: 'get', meta: file});
                             break;
                         case 'dir':
-                            this.filesParentIndex = index;
+                            this.listing = file.listing;
+                            this.listingOffset = 0;
                             break;
                     };
             };
         },
         fileResponse(msg) {
-            console.log('fileResponse:',typeof(msg),msg);
             switch (msg.action) {
                 case 'list':
-                    this.files = msg.listing || [];
+                    this.listing = msg.listing || [];
                     this.show.listing = 'listing';
-                    console.log('files:',this.files);
-                    window.fileRequest({action: 'get', meta: msg.listing[4]});
                     break;
                 case 'get':
                     let d = new Date(msg.meta.time);
@@ -209,7 +196,6 @@ const cnc = Vue.createApp({
                     this[b.call].apply(this,b.args);
                     break;
                 case 'key':
-                    console.log(`key: ${b.key}`)
                     switch (b.key) {
                         case 'bksp': this.cmd = this.cmd.slice(0,-1); break;
                         case 'enter': 
@@ -246,6 +232,24 @@ const cnc = Vue.createApp({
             this.activeTabView = this.tabs[i].view||'buttons';
         },
         popup(w,s=false) { this.show[w] = s; },
+        rpi(action) {
+            switch (action) {
+                case 'reload':
+                    window.location.reload();
+                    break;
+                case 'reboot':
+                    break;
+                case 'halt':
+                    break;
+                case 'ws':
+                    this.params.wsEnabled = !this.params.wsEnabled;
+                    if (this.params.wsEnabled) { wsCNC.connect(); } else { wsCNC.disconnect(); };
+                    break;
+                case 'close':
+                    this.show.rpi = '';
+                    break;
+            };
+        },
         async runJob(action) {
             switch (action) {
                 case 'init':
@@ -303,6 +307,19 @@ const cnc = Vue.createApp({
                     };
             };
         },
+        save(what,where) {
+            where = where || this.params.fileSave;
+            let meta = { root: where, folder: '' };
+            switch (what) {
+                case 'report':
+                case 'log':
+                    msg.contents = document.getElementById(what).innerText;
+                    break;
+                case 'file':
+                    // TBD
+            };
+            window.fileRequest({action: 'put', meta: meta })
+        },
         scribe(tag, line) {
             if (tag===null || !line) return;
             if (tag && this.transcriptLast===tag  && this.transcriptLevel<2 && !this.job.active) return;  // filter
@@ -310,11 +327,7 @@ const cnc = Vue.createApp({
             this.transcript.push(line);
             if (!this.job.active && this.transcript.length>(this.params.transcriptLength||50)) this.transcript.shift();
         },
-        trash() { this.transcript = []; },
-        wsStatus() {
-            this.params.wsEnabled = !this.params.wsEnabled;
-            if (this.params.wsEnabled) { wsCNC.connect(); } else { wsCNC.disconnect(); };
-        }
+        trash() { this.transcript = []; }
     }
 });
 VueLib3.applyLibToApp(cnc); // extend app with VueLib3

@@ -46,6 +46,7 @@ var cncModelData = {
             "${pseudo}","${size}/${count}","${date}",
             "","",""
         ],
+        fileSave: 'logs',
         filesLocal: {
             root: 'local',
             label: '(local:)',
@@ -139,7 +140,7 @@ var cncModelData = {
                 'home','','setHome','setAlt','',
                 'unlock','','','','',
                 'query','machine','','','',
-                'reset','','test','','ws'
+                'reset','','test','','rpi'
             ]
         }
     ],
@@ -353,6 +354,20 @@ var cncModelData = {
             action: 'gcode',
             gcode: '~'
         },
+        rpi: {
+            label: 'RPi Internals',
+            img: '/images/app.png',
+            action: 'call',
+            call: 'popup',
+            args: ['rpi','modal'] 
+        },
+        saveFile: {
+            label: 'Save Info',
+            img: 'imsages/save.png',
+            action: 'call',
+            call: 'save',
+            params: ['file','usb']
+        },
         setAlt: {
             label: 'Set<br>Alt Pos',
             title: 'Set Alternate work position (G30.1)',
@@ -415,13 +430,6 @@ var cncModelData = {
             label: 'TEST',
             action: 'gcode',
             gcode: 'G90 X0 Y0 Z0 F${feed}'
-        },
-        ws: {
-            label: 'WS<br>TOGGLE',
-            title: 'Toggle the websocket connections OFF/ON',
-            action: 'call',
-            call: 'wsStatus',
-            args: [],
         },
         xminus: {
             label: 'X-',

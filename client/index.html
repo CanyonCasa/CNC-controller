@@ -51,11 +51,25 @@
                 <span v-else v-html="b.label||''" :title="b.title"></span>
             </span>
         </div>
+        <div class="rpi" v-show="show.rpi">
+            <div class="rpi-grid">
+                <span class="rpi-item" @click="rpi('halt')">HALT RPI</span>
+                <span class="rpi-item" @click="rpi('reboot')">REBOOT RPI</span>
+                <span class="rpi-item empty"></span>
+                <span class="rpi-item empty"></span>
+                <span class="rpi-item" @click="rpi('reload')">RELOAD PAGE</span>
+                <span class="rpi-item" @click="rpi('ws')">TOGGLE WEBSOCKET [{{wsMsg}}]</span>
+                <span class="rpi-item empty"></span>
+                <span class="rpi-item" @click="rpi('close')">CANCEL</span>
+            </div>
+
+        </div>
     </div><!--.content-->
     <div id="info" v-show="show.info">
         <div id="close">
             <img class="trash" src="/images/trash.png" @click="trash()" alt="?"/>
-            <img class="clip" src="/images/clip.png" @click="clip(show.info)" alt="?"/> 
+            <img class="clip" src="/images/clip.png" @click="clip(show.info)" alt="?"/>
+            <img class="save" src="/images/save.png" @click="save(show.info)" alt="?"/>
             <img class="close" src="/images/close.png" @click="popup('info')" alt="?"/> 
         </div>
         <div id="text">

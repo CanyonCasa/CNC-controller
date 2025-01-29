@@ -281,3 +281,41 @@ div#text {
     opacity: 50%;
     font-family: 'Andale mono', monospace;
 }
+
+.rpi {
+    height: 480px;
+    width: 800px;
+    z-index: 100;
+    background-color: var(--default);
+    position: absolute;
+    top: 0;
+}
+.rpi-grid {
+    display: grid;
+    grid-template-columns: 300px 300px;
+    grid-template-rows: repeat(4,75px);
+    grid-auto-flow: column;
+    column-gap: 25px;
+    row-gap: 5px;
+    width: 625px;
+    margin: auto;
+    margin-top: 80px;
+    padding: 2.5px 10px;
+    align-items: stretch;
+    justify-items: stretch;
+    font-size: 24px;
+    font-weight: bolder;
+    background-color: var(--default);
+}
+.rpi-item {
+    border: 4px solid var(--dark-border);
+    border-radius: 8px;
+    color: var(--light-text);
+    background-color: var(--dark-bg);
+    text-align: center;
+    align-content: center;
+}
+.rpi-item.empty {
+    border: none;
+    background-color: var(--default);
+}

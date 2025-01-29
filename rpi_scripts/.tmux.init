@@ -1,0 +1,42 @@
+#!/bin/bash
+
+echo "*TMUX $USER PATH: $PATH"
+# NOTE: the following command must be run first if node installed with nvm
+# ln -s `nvm which node` ~/.nvm/nodejs
+
+USERPATH="/home/$USER/.nvm"
+export PATH="$USERPATH:$PATH"
+echo "TMUX $USER PATH: $PATH"
+
+
+# preloaded session per user...
+# root shell
+/usr/bin/tmux new-session -d -s $USER -n "root" "sudo -s; bash -i"
+
+# define a set of windows and launch specific commands
+# to make windows remain if initial command terminates append a "; bash -i" to command
+
+# CNC controller web server
+/usr/bin/tmux new-window -c /home/$USER/CNC-controller/server/bin -n 'CNC Server' 'nodejs cnc.js ../restricted/config; bash -i'
+
+# restricted bash shell
+/usr/bin/tmux new-window -c /home/$USER/CNC-controller/server/restricted -n restricted
+
+# web logs...
+/usr/bin/tmux new-window -c /home/$USER/CNC-controller/server/logs -n logs 'bash -i'
+
+# interactive node shell
+#/usr/bin/tmux new-window -c /home/$USER/bin/node -n node++ 'nodejs -r ./Extensions2JS; bash -i'
+
+# CNC controller client
+/usr/bin/tmux new-window -c /home/$USER/CNC-controller/client -n Client 'chromium-browser --kiosk http://localhost:8000; bash -i'
+
+# CNC gcode files
+/usr/bin/tmux new-window -c /home/$USER/CNC-controller/client/nc -n gcode  'bash -i'
+
+# kiosk
+/usr/bin/tmux new-window -c /home/$USER -n kiosk 'bash -i'
+
+# general purpose bash shell
+/usr/bin/tmux new-window -c /home/$USER -n bash 'bash -i'
+

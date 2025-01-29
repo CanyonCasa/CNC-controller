@@ -6,13 +6,14 @@ Raspberry Pi, CNC, offline, controller, gcode, sender, grbl
 #### *Abstract*
 RPi-based offline CNC controller supporting Grbl 1.1 designed around a bright 5" (800x480 pixel) touch screen. The design implements a NodeJS web server running on the localhost (RPi) accessed from a browser running in kiosk mode. It utilizes vanilla HTML, CSS, JavaScript, and Vue3 with no dependencies aside from the node websocket library, simplifying modification, maintenance, and customization. Use of a data model config file allow straightforward customization of all screen views (tabs). Use of a Websocket interface provides direct connection to a backend serial port (USB) enabling passing gcode from the web browser directly to the CNC machine. A second websocket provides access to files from multiple local, remote, and USB sources.
 
+<span style="color: aqua;">Tip: ALthough designed to run on a RPi with a limited screen, the controller can just as easily be installed and run on a PC or laptop for demo or easier debugging with the JavaScript console.</span>
+
 ## <span style="color: red; font-weight: bold">NOTICE</span>
 <span style="color: red;">This design assumes operation on a local network to simplify user access (i.e no credentials or certificate management).
 **As such the controller should not be operated on the open Internet.**</span>
 
 #### Screenshot
-![alt screenshot](docs/job.jpg)
-
+![alt photo](docs/photo.jpg)
 
 More screenshots available in the [docs](docs) folder.
 
@@ -24,6 +25,7 @@ The web provides plenty of tutorials on Raspberry Pi setup, which goes beyond th
   - **fonts**: Prefered web fonts, such as the default AndaleMono may need to be installed in /usr/share/fonts/...
   - **node**: You may need to install node. If using nvm or other version manager, you will need to provide a link to the version you wish to use for non-interactive bash shells, such as tmux panes.
     - **libs**: Node requires the additional install of the serialport and websockets libraries, under the CNC-controller server bin folder.
+  - **repo**: Clone this repo to the local user.
 
 ## SERVER
 The [server/bin] cnc.js file, with various other libs, implements a NodeJS-based websever with Websockets. The server does not require any code modification for use, just proper definition of the[server/restricted] config.js file that provides all the setup needed to run. Before use install NodeJS. Then install the NodeJS dependencies from the CNC-controller/server/bin folder, which will place the modules in the node_modules folder under bin.

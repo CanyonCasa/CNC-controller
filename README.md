@@ -3,14 +3,16 @@
 #### *Keywords*
 Raspberry Pi, CNC, offline, controller, gcode, sender, grbl
 
-#### *Abstract*
-RPi-based offline CNC controller supporting Grbl 1.1 designed around a bright 5" (800x480 pixel) touch screen. The design implements a NodeJS web server running on the localhost (RPi) accessed from a browser running in kiosk mode. It utilizes vanilla HTML, CSS, JavaScript, and Vue3 with no dependencies aside from the node websocket library, simplifying modification, maintenance, and customization. Use of a data model config file allow straightforward customization of all screen views (tabs). Use of a Websocket interface provides direct connection to a backend serial port (USB) enabling passing gcode from the web browser directly to the CNC machine. A second websocket provides access to files from multiple local, remote, and USB sources.
-
-<span style="color: aqua;">**Tip**: Although designed to run on a RPi with a limited screen, the controller can just as easily be installed and run on a PC or laptop for demo or easier debugging with the JavaScript console.</span>
-
 ## <span style="color: red;">**NOTICE**</span>
 <span style="color: red;">This design assumes operation on a local network to simplify user access (i.e no credentials or certificate management).
 **As such the controller should not be operated on the open Internet.**</span>
+
+#### *Abstract*
+RPi-based offline CNC controller supporting Grbl 1.1 designed around a bright 5" (800x480 pixel) touch screen. The design implements a NodeJS web server running on the localhost (RPi) accessed from a browser running in kiosk mode. It utilizes vanilla HTML, CSS, JavaScript, and Vue3 with no dependencies aside from the node websocket and serialport libraries, simplifying modification, maintenance, and customization. Use of a data model config file allows straightforward customization of all screen views (tabs). Use of a Websocket interface provides direct connection to a backend serial port  (over USB) enabling passing gcode from the web browser directly to the CNC machine. A second websocket provides access to files from multiple local, remote, and USB sources.
+
+<span style="color: aqua;">**Tip**: Although designed to run on a RPi with a limited screen, the controller can just as easily be installed and run on a PC or laptop for demo or easier debugging with the JavaScript console.</span>
+
+Why? How did I get here... see [background][docs/background.md].
 
 #### Screenshot
 ![alt photo](docs/photo.jpg)

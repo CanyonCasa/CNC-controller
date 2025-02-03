@@ -72,7 +72,8 @@ var cncModelData = {
             "${msg}","${state}","A: ${alarm}","E: ${error}"
         ],
         transcriptLength: 100,
-        wsEnabled: true
+        wsEnabled: true,
+        wsRPi: true
     },
     tabs: [
         {

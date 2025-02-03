@@ -235,12 +235,13 @@ misc.Scribe = function Scribe(config={}) {
         scribe.tag = config.tag || scribe.tag;
         scribe.verbose = config.verbose || scribe.verbose;
         scribe.mask(config.mask);
-        scribe.transcript = ({}).mergekeys(scribe.transport).mergekeys(config.transcript||{});
+        scribe.transcript.mergekeys(config.transcript||{});
     };
     let tag = (typeof config == 'string') ? config : scribe.tag;
     return Object.create(scribePrototype).mergekeys({
         tag: tag,
         file: scribe.transcript.file,
+        x: scribe.transcript,
         label: (tag.toUpperCase()+'        ').slice(0,8)
     });
 };

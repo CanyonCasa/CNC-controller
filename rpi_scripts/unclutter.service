@@ -1,0 +1,14 @@
+[Unit]
+Description=Starts Chormium in kiosk mode for CNC server
+After=graphical.target
+
+[Service]
+Type=simple
+User=dvc
+Group=dvc
+Environment="DISPLAY=:0"
+ExecStart=/usr/bin/unclutter -idle 0.5 -root
+#Restart=always
+
+[Install]
+WantedBy=graphical.target

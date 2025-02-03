@@ -1,5 +1,6 @@
 // (C) 2025 Enchanted Engineering
-const VERSION = 1.00;   // 20250126 dvc Initial release
+//const VERSION = 1.00;   // 20250126 dvc Initial release
+const VERSION = '1.10';   // 20250126 dvc Initial release
 
 /*
 A simple web server for a RPi based CNC offline controller
@@ -29,10 +30,10 @@ const zlib = require('zlib');
 const stream = require('stream');
 const path = require('path');
 const http = require('http');
-const Scribe = require('./scribe');
-const { httpStatusMsg, mimeType } = require('./misc');
+const { httpStatusMsg, mimeType, Scribe } = require('./misc');
 const SerialWS = require('./wsSerial');
 const FileWS = require('./wsFileServer');
+const RPiWS = require('./wsRPi');
 
 async function stat(spec) { try { return await fsp.stat(spec) } catch(e) { throw 404; }; };
 function sniff(callback) { // passthrough stream
@@ -59,20 +60,18 @@ try {
     httpServer = http.createServer(async(req,res)=>{
         // code called for each http request...
         let ctx = {
-            uuid: Math.random().toString().slice(2),
-            headers: Object.assign({},cfg.site.headers),
+            headers: Object.assign({},cfg.site.headers,{uuid: Math.random().toString().slice(2)}),
             host: req.headers.host,
             url: req.url,
-            href: `http://${req.headers.host}${cfg.port==80?'':(':'+cfg.port)}${req.url}`,
+            href: `http://${req.headers.host}${req.url}`,
             method: req.method.toUpperCase()
         };
         try {
             //console.log(req.url,req.headers);
             if (ctx.method != 'GET') throw 405;
             scribe.log(scribe.format(cfg.log$,ctx));    // log request URL
-            if (ctx.url==='/') ctx.url = '/index.html'; // adjust homepage
-            // handle and send request...
-            ctx.headers.uuid = ctx.uuid;
+            // handle file request...
+            if (ctx.url==='/') ctx.url = '/index.html'; // resolve homepage
             ctx.file = path.join(cfg.site.root,ctx.url);
             ctx.headers['Content-type'] = mimeType(path.extname(ctx.file));
             ctx.headers['cache-control'] = 'no-cache';
@@ -119,12 +118,16 @@ if (!httpServer) process.exit();
 let wss = new SerialWS(cfg.ws.serial,Scribe);
 // web socket for file access...
 let wsf = new FileWS(cfg.ws.file,Scribe);
+// web socket for RPi control...
+let wspi = (cfg.ws.rpi) ? new RPiWS(cfg.ws.rpi,Scribe) : null;
 
 httpServer.on('upgrade', function upgrade(request, socket, head){
     if (request.url===cfg.ws.serial.url) {
         wss.upgrade(request, socket, head);
     } else if ((request.url===cfg.ws.file.url)) {
         wsf.upgrade(request, socket, head);
+    } else if (wspi && (request.url===cfg.ws.rpi.url)) {
+        wspi.upgrade(request, socket, head);
     } else {
         socket.destroy();
     }

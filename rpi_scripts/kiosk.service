@@ -1,0 +1,16 @@
+
+[Unit]
+Description=Starts Chormium in kiosk mode for CNC server
+After=graphical.target
+Atfer=unclutter.service
+
+[Service]
+Type=simple
+User=1000
+Group=1000
+Environment="DISPLAY=:0"
+ExecStart=/usr/bin/chromium --noerrdialogs --disable-infobars --kiosk http://localhost:8000
+Restart=always
+
+[Install]
+WantedBy=graphical.target

@@ -55,8 +55,8 @@
             <div class="rpi-grid">
                 <span class="rpi-item" @click="rpi('halt')">HALT RPI</span>
                 <span class="rpi-item" @click="rpi('reboot')">REBOOT RPI</span>
-                <span class="rpi-item empty"></span>
-                <span class="rpi-item empty"></span>
+                <span class="rpi-item" @click="rpi('server')">RESTART SERVER</span>
+                <span class="rpi-item" @click="rpi('client')">RESTART CLIENT</span>
                 <span class="rpi-item" @click="rpi('reload')">RELOAD PAGE</span>
                 <span class="rpi-item" @click="rpi('ws')">TOGGLE WEBSOCKET [{{wsMsg}}]</span>
                 <span class="rpi-item empty"></span>

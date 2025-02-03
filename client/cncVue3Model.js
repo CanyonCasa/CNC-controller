@@ -234,12 +234,14 @@ const cnc = Vue.createApp({
         popup(w,s=false) { this.show[w] = s; },
         rpi(action) {
             switch (action) {
+                case 'reboot':
+                case 'halt':
+                case 'server':
+                case 'client':
+                    window.rpiRequest({action: action});
+                    break;
                 case 'reload':
                     window.location.reload();
-                    break;
-                case 'reboot':
-                    break;
-                case 'halt':
                     break;
                 case 'ws':
                     this.params.wsEnabled = !this.params.wsEnabled;
@@ -250,6 +252,7 @@ const cnc = Vue.createApp({
                     break;
             };
         },
+        rpiResponse(msg) { if (msg.error) {console.error(msg.error)} else {console.log(msg.msg)}; },
         async runJob(action) {
             switch (action) {
                 case 'init':
@@ -335,7 +338,7 @@ const cncRoot = cnc.mount('#app');  // provide a window scope reference for Vue 
 
 
 // Websocket setup...
-// websocket objects (wsCNC,wsFile) defined in global scope from script loaded in html
+// websocket objects (wsCNC,wsFile,wsRPi) defined in global scope from wsWrappers.js script loaded in html
 // these functions route text messages between Vue app model and websockets
 
 // wrapper function for clarity; sends text from Vue app (cnc) to server serial 
@@ -351,3 +354,13 @@ function fileRequest(req) { wsFile.send(req); };
 wsFile.onData(cncRoot.fileResponse);
 // start the websocket, which in turn opens serial port on server
 wsFile.connect(`ws://${window.location.host}/file`);
+
+function rpiRequest() {};   // NOP placeholder
+if (cncModelData.params.wsRPi) { // optional, so conditionally started
+    // wrapper function for clarity; sends JSON req from Vue app (cnc) to file server 
+    function rpiRequest(req) { wsRPi.send(req); };
+    // Add event listener for Vue app to receive file server response
+    wsRPi.onData(cncRoot.rpiResponse);
+    // start the websocket, which in turn opens serial port on server
+    wsRPi.connect(`ws://${window.location.host}/rpi`);
+};

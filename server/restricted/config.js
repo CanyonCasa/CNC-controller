@@ -3,7 +3,7 @@ let cfg = {
     port: '8000',       // server port, may require permissions
     chunk:  8192,       // max data chunk size; larger files compressed and streamed
     log$: "RQST[${ctx.method}] ${ctx.href}",    // template for logging requests
-scribe: {                               // parameters for the built in logger
+    scribe: {                           // parameters for the built in logger
         tag: 'CNC',                     // unique top-level tag for transcript output
         mask: 'extra',                  // desired level of detail see scribe.js
         transcript: {
@@ -35,6 +35,10 @@ scribe: {                               // parameters for the built in logger
                 remote: '/data/python', // note: these keys must match those in the cncModelData,js 
                 usb: '/data/git/CNC-controller/client/nc'
             }
+        },
+        rpi: {                          // optional websock to allow control of RPI
+            scribe: { tag: 'RPI' },     // unique transcript message tag for websocket responses
+            url: '/rpi'                 // path requested from client, i.e. ws://localhost/rpi  
         }
     }
 };

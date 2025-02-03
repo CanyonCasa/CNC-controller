@@ -79,3 +79,46 @@ const wsFile = { // websocket wrapper...
     }
 
 };
+
+// Websocket client interface for RPi commands...
+const wsRPi = { // websocket wrapper...
+
+    ws: null,
+    url: 'ws://localhost/rpi',
+    listener: null,
+    onData: function(listener) { wsRPi.listener = listener; },
+
+    connect: function wsConnect(url) {
+        wsRPi.url = url || wsRPi.url;
+        if (wsRPi.ws) wsRPi.ws = null;          // destroy any previous websocket
+        wsRPi.ws = new WebSocket(wsRPi.url);    // create a new websocket
+        console.log('File websocket created...');
+        wsRPi.ws.addEventListener('error',(e)=>console.error);
+        wsRPi.ws.addEventListener('message',(msg)=>{
+            try {
+                let text = msg.data.toString();
+                let obj = JSON.parse(text);
+                if (verbose) console.log(`>[wsRPi]: ${text}`);
+                if (wsRPi.listener) wsRPi.listener(obj);
+            } catch(e) {
+                console.error('wsRPi.connect:',e);
+                return {};
+            };
+        });
+        wsRPi.ws.addEventListener('open',(evt)=>{ console.log('File websocket connected'); });
+        wsRPi.ws.addEventListener('close',(evt)=>{ console.log('File webscoket disconnected',evt); if (evt.code!==4999) setTimeout(wsRPi.connect,1000);
+        });
+    },
+
+    disconnect: function wsDisconnect() {
+        wsRPi.ws.close(4999);
+        console.log('File websocket destroyed!');
+    },
+
+    send: function wsSend(obj) {
+        let text = JSON.stringify(obj);
+        if (verbose) console.log(`<[wsRPi]: ${text}`);
+        wsRPi.ws.send(text);
+    }
+
+};

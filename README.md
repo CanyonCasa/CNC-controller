@@ -165,8 +165,15 @@ The CNC controller has a number of "predefined" functions and capabilities.
 
     The controller can send any GRBL 1.1 commands necessary to the CNC to config it's function and behavior. As part of this a report function queries machine  configuration has captures it to a report file where it can be copied to the clipboard
 
-## TBD
+## RPi Commands
+To support commanding Raspberry Pi actions (i.e. reboot, shutdown, ...) the server includes an optional third websocket interface, enabled by default. Because of the additional security implications of this, the websocket can be disabled by removing its definition in the config.js and cncModelData.js files. The server/client requires some additional setup in order to use this functionality.
 
+  - **server rpi websocket**: Define 'rpi' websocket url in config.js (defauult).
+  - **client rpi websocket**: Define cncModelData parameter wsRPi as true (default)
+  - **shutdown (i.e. reboot and halt actions)**: In support of the REBOOT and HALT operations, the server user must be configured via the sudoers file to run the _shutdown_ command without authentication. To do so add a line (using visudo) to the sudoers file such as "\<user\>  localhost=(\<user\>) NOPASSWD: /usr/sbin/shutdown", where \<user\> is the username for the setup.
+  - **server action**: In order to use the server restart feature, the usual 'node cnc' start command must be wrapped in some monitor program, such as node-supervisor, as in 'supervisor -i. cnc' in order to automatically start when terminated.
+  - **cient action**: In order to use the client restart feature, the chromium command must be wrapped in some monitor program or service, for example (rpi_scripts) kiosk.service.
+
+## TBD
   - Fix the remote file capability to tunnel through server
   - Provide the ability to save job files, logs, and reports whereever.
-  - RPi control: reboot, halt, wtype?, restart kiosk?

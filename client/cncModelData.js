@@ -73,6 +73,7 @@ var cncModelData = {
         ],
         transcriptLength: 100,
         wsEnabled: true,
+        wsRemote: 'ws://192.168.0.179:9000/remote',
         wsRPi: true
     },
     tabs: [

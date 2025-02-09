@@ -1,3 +1,5 @@
+// CNC server configuration data...
+
 let cfg = {
     host: 'localhost',  // host name for the server
     port: '8000',       // server port, may require permissions
@@ -12,11 +14,14 @@ let cfg = {
             fsize: 250000               // file size rollover
         }
     },
-    site: {
-        headers: { site: 'CNC Offline Controller Server' }, // any custom response headers written by server
+    site: { // any custom response headers written by server
+        headers: {
+            site: 'CNC Offline Controller Server',
+            'Access-Control-Allow-Origin': '*' 
+        }, 
         root: '../../client'            // relative or absolute path to files served to the client
     },
-    ws: {                               // websockets parameters
+    ws: {                               // websockets parameters; default all defined for CNC server
         serial: {                       // serial port websocket
             port: {                     // port parameters
                 alias: 'CNC',           // optional alias for error reporting
@@ -24,22 +29,24 @@ let cfg = {
                 path: 'COM10',           // port identifier, likely /dev/ttyACM0 on RPi
                 baudRate: 115200        // serial baudrate; may be CNC specific
             },
-            scribe: { tag: 'SWS' },     // unique transcript message tag for websocket responses
-            url: '/serial'              // path requested from client, i.e. ws://localhost/serial
+            scribe: { tag: 'SWS' }      // unique transcript message tag for websocket responses
         },
         file: {                         // files websocket
             scribe: { tag: 'FWS' },     // unique transcript message tag for websocket responses
-            url: '/file',               // path requested from client, i.e. ws://localhost/file
             root: {                     // references for absolute path requested from client
-                local: '/data/tmp',     //   defined here to isolate server file system from client
-                remote: '/data/python', // note: these keys must match those in the cncModelData,js 
-                usb: '/data/git/CNC-controller/client/nc'
+                local: '../../cnc',     // relative/absolute paths defined here to isolate server file system from client
+                usb: '/media'           // note: these keys match those in the cncModelData,js 
             }
         },
         rpi: {                          // optional websock to allow control of RPI
-            scribe: { tag: 'RPI' },     // unique transcript message tag for websocket responses
-            url: '/rpi'                 // path requested from client, i.e. ws://localhost/rpi  
+            scribe: { tag: 'RPI' }      // unique transcript message tag for websocket responses
+        },
+        remote: {                       // remote: note ws defined as a relay to different server
+            ws: 'ws://192.168.0.179:9000/file',
+            wsOptions: { handshakeTimeout: 2000 },
+            scribe: { tag: 'RFS' }
         }
+        
     }
 };
 

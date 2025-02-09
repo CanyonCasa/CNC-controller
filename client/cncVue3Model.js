@@ -1,18 +1,9 @@
 // Vue3 functional model for cnc server ...
 // (C) 2025 Enchanted Engineering
 //const VERSION = 1.00;   // 20250126 dvc Initial release
-const VERSION = 1.10;   // 20250129 dvc Port to RPi
+//const VERSION = 1.10;   // 20250129 dvc Port to RPi
+const VERSION = 1.20;   // 20250205 dvc Working remote file access
 
-// wrapper function to evaluate template literals...
-const templafy = (template, vars = {}) => {
-    try {
-        let [keyList,values] = [Object.keys(vars).join(','),Object.values(vars)];
-        let literal = new Function('exprs','let func=('+keyList+')=>`'+template+'`; return func(...exprs)');
-        return literal(values);
-    } catch(e) { 
-        console.error(`templafy[${template}]: ${e}`);
-        return ''; }
-  };
 
 // Vue app definition...
 const cnc = Vue.createApp({
@@ -52,7 +43,7 @@ const cnc = Vue.createApp({
             return buttons.map(b=>b==='' ? {} : this.buttons[b]||{label:`${b}?`});
         },
         fileButtons() { return Object.keys(this.params.fileButtons).map(k=>this.buttons[this.params.fileButtons[k]]); },
-        fileDetails() { return (this.params.fileOverlayTemplates || []).map(t=>templafy(t,this.params.file)); },
+        fileDetails() { return (this.params.fileOverlayTemplates || []).map(t=>this.templafy(t,this.params.file)); },
         listingSorted() {
             return [...(this.listing.map((f,i)=>(f.type==='dir'?{i:i,n:`[${f.name}]`}:null)).filter(x=>x)),
                     ...(this.listing.map((f,i)=>(f.type==='file'?{i:i,n:f.name}:null)).filter(x=>x))];
@@ -61,8 +52,15 @@ const cnc = Vue.createApp({
         overlay() { return this.tabs[this.activeTab].overlay || '' },
         report() { return 'Machine Report...\n' + Object.entries(this.reportSet).map(e=>`  ${e[0]}: ${e[1]}`).join('\n')+'\n...End of Report'; },
         script() { return this.transcript.join('\n'); },
-        status() { return (this.params.statusTemplates || []).map(t=>templafy(t,this.params)); },
+        status() { return (this.params.statusTemplates || []).map(t=>this.templafy(t,this.params)); },
         wsMsg() { return this.params.wsEnabled ? 'OFF' : 'ON' }
+    },
+    created() {
+        // websocket setup... these functions route text/JSON messages between Vue app and endpoint websockets
+        this.wsCNC = this.wsFactory({tag:'CNC',url:'/serial',mode:'text',listener:this.cncRX});
+        this.wsFile = this.wsFactory({tag:'File',url:'/file',mode:'JSON',listener:this.fileResponse});
+        this.wsRFS = this.params.wsRemote ? this.wsFactory({tag:'RFS',url:'/remote',mode:'JSON',listener:this.fileResponse}) : null;
+        this.wsRPi = this.params.wsRPi ? this.wsFactory({tag:'RPi',url:'/rpi',mode:'JSON',listener:this.rpiResponse}) : null;
     },
     methods: {
         cncRX(text) {
@@ -128,7 +126,8 @@ const cnc = Vue.createApp({
                         case 'file':
                             this.show.listing = '';
                             this.listingOffset = 0;
-                            window.fileRequest({action: 'get', meta: file});
+                            let rqst = {action: 'get', meta: file}
+                            if (file.root==='remote') { this.wsRFS.send(rqst) } else { this.wsFile.send(rqst) };
                             break;
                         case 'dir':
                             this.listing = file.listing;
@@ -138,6 +137,12 @@ const cnc = Vue.createApp({
             };
         },
         fileResponse(msg) {
+            if (msg.error) {
+                console.error('fileResponse',error);
+                this.params.error = 'WS?';
+            } else if (verbose) {
+                console.log('fileResponse:',msg);
+            };
             switch (msg.action) {
                 case 'list':
                     this.listing = msg.listing || [];
@@ -154,8 +159,9 @@ const cnc = Vue.createApp({
                     break;
             }
         },
-        async filesDialog(ref) {
-            window.fileRequest({action: 'list',  meta: this.params[ref]});
+        filesDialog(ref) {
+            let msg = {action: 'list',  meta: this.params[ref]};
+            if (msg.meta.root==='remote') { this.wsRFS.send(msg); } else { this.wsFile.send(msg); };
         },
         async pickButton(b) {
             if (b.disabled) return;
@@ -164,7 +170,7 @@ const cnc = Vue.createApp({
                 case 'gcode':
                     let glist = b.gcode.split(',');
                     glist.forEach(instruction=>{
-                        let gcode = templafy(instruction,this.params).trim();
+                        let gcode = this.templafy(instruction,this.params).trim();
                         window.cncTX(gcode);
                         this.scribe('', `< ${gcode}`);
                         if (verbose) console.log(`TX[${b.action}]: ${gcode}`);
@@ -175,7 +181,7 @@ const cnc = Vue.createApp({
                     if ('value' in b) { 
                         this.params[b.param] = b.value;
                     } else if (b.template) {
-                        this.params[b.param] = templafy(b.template,this.params);
+                        this.params[b.param] = this.templafy(b.template,this.params);
                     } else {
                         return console.warn(`NO value or template specified for param!`);
                     };
@@ -216,7 +222,6 @@ const cnc = Vue.createApp({
                         default: 
                             this.cmd += b.key;
                     };                 
-                    //window.document.getElementById('cmd').value = this.cmd;
                     break;
                 case 'shift':
                     let tab = this.tabs[this.activeTab];
@@ -238,14 +243,14 @@ const cnc = Vue.createApp({
                 case 'halt':
                 case 'server':
                 case 'client':
-                    window.rpiRequest({action: action});
+                    if (this.wsRPi) this.wsRPi.send({action: action});
                     break;
                 case 'reload':
                     window.location.reload();
                     break;
                 case 'ws':
                     this.params.wsEnabled = !this.params.wsEnabled;
-                    if (this.params.wsEnabled) { wsCNC.connect(); } else { wsCNC.disconnect(); };
+                    if (this.params.wsEnabled) { this.wsCNC.connect(); } else { this.wsCNC.disconnect(); };
                     break;
                 case 'close':
                     this.show.rpi = '';
@@ -330,37 +335,59 @@ const cnc = Vue.createApp({
             this.transcript.push(line);
             if (!this.job.active && this.transcript.length>(this.params.transcriptLength||50)) this.transcript.shift();
         },
-        trash() { this.transcript = []; }
+        templafy (template, vars = {}) {    // wrapper function to evaluate template literals...
+            try {
+                let [keyList,values] = [Object.keys(vars).join(','),Object.values(vars)];
+                let literal = new Function('exprs','let func=('+keyList+')=>`'+template+'`; return func(...exprs)');
+                return literal(values);
+            } catch(e) { 
+                console.error(`templafy[${template}]: ${e}`);
+                return ''; 
+            }
+        },
+        trash() { this.transcript = []; },
+        wsFactory(cfg) {    // generic websocket wrapper: cfg:{tag:'CNC',url:'/seral',mode:'text', listener: this.cncRX, auto: true}
+            let tmp = {
+                listener: cfg.listener,
+                mode: cfg.mode==='JSON' ? 'JSON' : 'text',
+                connected: false,
+                reconnect: cfg.reconnect!==false,
+                tag: cfg.tag || 'Generic',
+                url: (cfg.url.startsWith('ws:')) ? cfg.url : `ws://${window.location.host}${cfg.url}`,
+                ws: null,
+                connect: function connect() {
+                    if (tmp.ws) tmp.ws = null;          // destroy any previous websocket
+                    tmp.ws = new WebSocket(tmp.url);    // create a new websocket
+                    if (verbose) console.log(`${tmp.tag} websocket created...`);
+                    tmp.ws.addEventListener('error',(e)=>console.error);
+                    tmp.ws.addEventListener('message',(msg)=>{
+                        console.log(msg.data)
+                        let text = msg.data.replace(/\r?\n|\r/,'');
+                        if (verbose) console.log(`>[${tmp.tag}] ${text}`);
+                        let data = tmp.mode==='JSON' ? JSON.parse(text) : text;
+                        if (tmp.listener) tmp.listener(data);
+                    });
+                    tmp.ws.addEventListener('open',()=>{ tmp.connected=true; console.log(`${tmp.tag} websocket connected`); });
+                    tmp.ws.addEventListener('close',()=>{
+                        tmp.connected = false;
+                        console.log(`${tmp.tag} websocket disconnected`);
+                        if (tmp.reconnect) setTimeout(tmp.connect,1000);
+                });
+                },
+                disconnect: function () {
+                    tmp.ws.close();
+                    if (verbose) console.log(`${tmp.tag} websocket destroyed!`);
+                },
+                send: function (data) {
+                    let text = tmp.mode==='JSON' ? JSON.stringify(data) : data + '\r\n';
+                    if (verbose) console.log(`<[${tmp.tag}] ${text}`);
+                    tmp.ws.send(text);
+                }
+            };
+            if (cfg.auto!==false) tmp.connect();
+            return tmp;
+        }
     }
 });
 VueLib3.applyLibToApp(cnc); // extend app with VueLib3
 const cncRoot = cnc.mount('#app');  // provide a window scope reference for Vue app
-
-
-// Websocket setup...
-// websocket objects (wsCNC,wsFile,wsRPi) defined in global scope from wsWrappers.js script loaded in html
-// these functions route text messages between Vue app model and websockets
-
-// wrapper function for clarity; sends text from Vue app (cnc) to server serial 
-function cncTX(text) { wsCNC.send(text); };
-// Add event listener for Vue app to receive server serial text
-wsCNC.onData(cncRoot.cncRX);
-// start the websocket, which in turn opens serial port on server
-wsCNC.connect(`ws://${window.location.host}/serial`);
-
-// wrapper function for clarity; sends JSON req from Vue app (cnc) to file server 
-function fileRequest(req) { wsFile.send(req); };
-// Add event listener for Vue app to receive file server response
-wsFile.onData(cncRoot.fileResponse);
-// start the websocket, which in turn opens serial port on server
-wsFile.connect(`ws://${window.location.host}/file`);
-
-function rpiRequest() {};   // NOP placeholder
-if (cncModelData.params.wsRPi) { // optional, so conditionally started
-    // wrapper function for clarity; sends JSON req from Vue app (cnc) to file server 
-    function rpiRequest(req) { wsRPi.send(req); };
-    // Add event listener for Vue app to receive file server response
-    wsRPi.onData(cncRoot.rpiResponse);
-    // start the websocket, which in turn opens serial port on server
-    wsRPi.connect(`ws://${window.location.host}/rpi`);
-};

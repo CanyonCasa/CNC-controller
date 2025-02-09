@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+
+<head>
+<meta charset="UTF-8">
+<title>CNC Controller</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script>
+    function openConnection(){
+        if(window.WebSocket){
+            // Open a web socket
+            ws = new WebSocket("ws://192.168.0.128:9000");
+            ws.onopen = function(){
+            ws.send("socket open");
+            document.getElementById('socketStatus').innerHTML =
+                "socket connected";
+            };
+            ws.onmessage = function(evt){
+            var recievedMessage = evt.data;
+            document.getElementById('serverResponse').innerHTML =
+                recievedMessage;
+            };
+        } else{
+            document.getElementById('socketStatus').innerHTML =
+            "WebSockets not supported";
+        }
+    }
+
+     function sendMessage(){
+        // use global web socket object to send a message
+        ws.send("sending another message");
+    }
+      
+    function closeConnection(){
+        // close the web socket connection
+        ws.close();
+        document.getElementById('socketStatus').innerHTML =
+            "socket disconnected";
+    }
+</script>
+</head>
+
+<body>
+    <p id="socketStatus">socket disconnected</p>
+    <button onclick="openConnection()">create socket</button>
+    <button onclick="sendMessage()">send message</button>
+    <button onclick="closeConnection()">close socket</button>
+    <p id="serverResponse">response from server</p>
+</body>
+  
+</html>

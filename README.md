@@ -25,9 +25,10 @@ The web provides plenty of tutorials on Raspberry Pi setup, which goes beyond th
   - **SSH**: Make sure Secure Shell (SSH) is enabled to access the controller remotely.
   - **tmux**: Installing and configuring tmux makes it possible to perform lasting shell operations, such as running the server, which do not end when the remote login session ends. Install tmux and then enable and start the (/etc/systemd/system) tmux.service. It will run the (/usr/local/bin) tmuxuser script and start a tmux session for each user having a .tmux.init file in their home directory when the RPi boots. When starting a SSH session run (/usr/local/bin) gotmux to reconnect to the prior session.
   - **fonts**: Prefered web fonts, such as the default AndaleMono may need to be installed in /usr/share/fonts/...
-  - **node**: You may need to install node. If using nvm or other version manager, you will need to provide a link to the version you wish to use for non-interactive bash shells, such as tmux panes.
+  - **node**: You may need to install node. If using nvm or other version manager, you will need to provide a link to the version you wish to use for non-interactive bash shells, such as tmux panes. Also, if you wish the server to restart automatically with crashes you will need a monitor library, such as node-supervisor.
     - **libs**: Node requires the additional install of the serialport and websockets libraries, under the CNC-controller server bin folder.
   - **repo**: Clone this repo to the local user.
+  - **kiosk service**: If you wish to have the kiosk restart automatically upon crashing, install the (rpi_scripts) kiosk service.
 
 ## SERVER
 The [server/bin] cnc.js file, with various other libs, implements a NodeJS-based websever with Websockets. The server does not require any code modification for use, just proper definition of the[server/restricted] config.js file that provides all the setup needed to run. Before use install NodeJS. Then install the NodeJS dependencies from the CNC-controller/server/bin folder, which will place the modules in the node_modules folder under bin.
@@ -174,6 +175,10 @@ To support commanding Raspberry Pi actions (i.e. reboot, shutdown, ...) the serv
   - **server action**: In order to use the server restart feature, the usual 'node cnc' start command must be wrapped in some monitor program, such as node-supervisor, as in 'supervisor -i. cnc' in order to automatically start when terminated.
   - **cient action**: In order to use the client restart feature, the chromium command must be wrapped in some monitor program or service, for example (rpi_scripts) kiosk.service.
 
+## Remote File Server
+The code supports retriving files from a local folder and USB media by default. Additionally, files may be served from a remote location, meaning elsewhere on the local network not across the internet, except perhaps via a VPN. To support this, the server can be run in Remote File Server mode on a different machine from the RPi (localhost), by running a pared down configuration (for example, rfsconfig.js) that sets a _remoteFileServer: true_ value. The localhost RPi configuration can then define the remote websocket with an absolute reference to the remote file server websocket, as in the config.js example. The remote file server then defines a file websocket. The localhost acts as a relay shuttling traffic to the remote server. This gets around CORS issues and the server automatically handles starting and stopping the relay connection so that the remote server and client don't constantly try reconnecting and loggings continuous errors.
+
+**Note**: If running the remote server on a Windows machine the "NodeJS JavaScript Runtime" application will need to allow Windows Firewall access.
+
 ## TBD
-  - Fix the remote file capability to tunnel through server
-  - Provide the ability to save job files, logs, and reports whereever.
+  - Provide the ability to save job files, gcode logs, and reports whereever.

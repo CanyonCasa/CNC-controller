@@ -11,18 +11,20 @@ async function safeStat(spec,lnks) { try { return await (lnks?fsp.stat(spec):fsp
 async function listFolder(src) {
     let { root, meta } = src;
     let accept = meta.accept ? meta.accept.split(/[, \t]+/) : null;
+    let folder = meta.folder || '';
     let listing = [];
-    if (!root || meta.folder.startsWith('..')) return listing;   // prevent backtracking root directory hierarchy
-    let dir = path.resolve(path.join(root,meta.folder));
+    if (!root || (folder.startsWith('..'))) return listing;   // prevent backtracking root directory hierarchy
+    let dir = path.resolve(path.join(root,folder));
     meta.recursive = meta.recursive===undefined ? true : !!meta.recursive;
     let fsListing = await fsp.readdir(dir);
     for (let f in fsListing) {
         let name = fsListing[f];
-        let spec = path.resolve(path.join(root,meta.folder,name));
-        let pseudo = meta.label + '/' + path.join(meta.folder,name);
+
+        let spec = path.resolve(path.join(root,folder,name));
+        let pseudo = meta.label + '/' + path.join(folder,name);
         let stats = await safeStat(spec,meta.links);
         let fso = !stats || stats.isSymbolicLink() ? null :
-            { root: meta.root, folder: meta.folder, name: name, size:stats.size, time: stats.mtime, pseudo: pseudo,
+            { root: meta.root, folder: folder, name: name, size:stats.size, time: stats.mtime, pseudo: pseudo,
             type: stats.isFile()?'file':stats.isDirectory()?'dir':stats.isSymbolicLink()?'link':'unknown' };
         if (fso) {  // valid file system object
             switch (fso.type) {
@@ -32,7 +34,7 @@ async function listFolder(src) {
                 case 'dir':
                     //fso.listing = [];
                     if (meta.recursive) {
-                        let subMeta = Object.assign({},meta,{folder: path.join(meta.folder,fso.name)});
+                        let subMeta = Object.assign({},meta,{folder: path.join(folder,fso.name)});
                         let sublisting = await listFolder({root: root, meta: subMeta});
                         if (meta.flat) {
                             listing = [...listing, fso, ...sublisting]; // add fso then its sublisting
@@ -92,25 +94,29 @@ wsFileServer.prototype.upgrade = function upgrade(request, socket, head){
             };
             this.scribble.extra(`wsFile: '${ JSON.stringify(msg).slice(0,60)+'...'}`);
             let root = this.cfg?.root[msg.meta?.root];
-            if (root.startsWith('~')) root = os.homedir() + root.slice(1);  // bash path expansion
-            switch (msg.action) {
-                case 'list':
-                    try { 
-                        msg.listing = await listFolder({root: root ,meta: msg.meta});
-                    } catch(e) { msg.listing = []; msg.error = e };
-                    break;
-                case 'get':
-                    try { 
-                        msg.contents = await loadFile({root: root ,meta: msg.meta}); 
-                    } catch(e) { msg.contents = ''; msg.error = e };
-                    break;
-                case 'put':
-                    msg.error = await saveFile({root: root, meta: msg.meta, contents: msg.contents}); 
-                    break;
-                default:
-                    msg.error =`UNKNOWN[${msg.action}]: file server request action!`
-            };
-            ws.send(JSON.stringify(msg));
+            if (!root) {
+                msg.error = 'Root undefined!'
+            } else {
+                if (root.startsWith('~')) root = os.homedir() + root.slice(1);  // bash path expansion
+                switch (msg.action) {
+                    case 'list':
+                        try { 
+                            msg.listing = await listFolder({root: root ,meta: msg.meta});
+                        } catch(e) { msg.listing = []; msg.error = e.toString() };
+                        break;
+                    case 'get':
+                        try { 
+                            msg.contents = await loadFile({root: root ,meta: msg.meta}); 
+                        } catch(e) { msg.contents = ''; msg.error = e.toString() };
+                        break;
+                    case 'put':
+                        msg.error = await saveFile({root: root, meta: msg.meta, contents: msg.contents}); 
+                        break;
+                    default:
+                        msg.error =`UNKNOWN[${msg.action}]: file server request action!`
+                };
+            }
+           ws.send(JSON.stringify(msg));
         });
         this.scribble.info('File WebSocket open!');
     });

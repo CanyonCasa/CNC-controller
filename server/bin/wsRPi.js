@@ -17,7 +17,7 @@ wsRPi.prototype.upgrade = function upgrade(request, socket, head){
         this.ws = ws;
         this.wss.emit('connection', ws, request);
         ws.on('error',err=>this.scribble.error(`RPi Websocket: ${err.toString()}`));
-        ws.on('close', ()=>{ this.scribble.warn('Rpi WebSocket closed!') });
+        ws.on('close', ()=>{ this.scribble.warn('RPi WebSocket closed!') });
         ws.on('message', async (buf)=>{
             try { 
                 var msg = JSON.parse(buf.toString()); 
@@ -43,6 +43,9 @@ wsRPi.prototype.upgrade = function upgrade(request, socket, head){
                     case 'client': // client shutdown/restart
                         setTimeout(()=>{exec('killall chromium')},msg.delay||100);
                         msg.msg = 'RPi client restarting...'
+                        break;
+                    case 'console': // kiosk console redirect for debug
+                        this.scribble[msg.level||'info'](msg.msg);
                         break;
                     default:
                         msg.error =`UNKNOWN[${msg.action}]: file server request action!`

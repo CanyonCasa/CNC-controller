@@ -13,6 +13,7 @@ require('./Extensions2JS');
 const frmt = require('util').format;
 const fsp = require('fs').promises;
 const path = require('path');
+const stream = require('stream');
 
 ///*************************************************************
 /// definitions...
@@ -228,7 +229,7 @@ const scribePrototype = {
 /**
  * @function scribe creates transcripting instances from scribe prototype
  * @param {object} config - main configuration, overrides defaults
- * @param {string} config - tag name reference for scribe instances, (8 character max) 
+ * @return {oject} a scribe object wrapper to a sribe singleton
  */
 misc.Scribe = function Scribe(config={}) {
     if (typeof config !== 'string') {   // then override any defaults with defined values of object
@@ -245,5 +246,26 @@ misc.Scribe = function Scribe(config={}) {
         label: (tag.toUpperCase()+'        ').slice(0,8)
     });
 };
+
+/**
+ * @function sniff creates a passthru stream for watching a streaming file
+ * @param {function} callback - callback to process buffer chunk
+ * @return {pipe} input piped to output
+ */
+misc.sniff = function sniff(callback) { // passthrough stream
+    return new stream.Transform({ 
+        objectMode: false,
+        transform(chunk, encoding, done) { callback(Buffer.from(chunk, encoding)); this.push(chunk); done(); }, 
+        flush(done) { done(); }
+    });
+};
+
+/**
+ * @function stat valid file stat function
+ * @param {string} spec - resolved path to file
+ * @return {object} - stat object or error object 
+ */
+misc.stat = async function stat(spec) { try { return await fsp.stat(spec) } catch(e) { throw 404; }; };
+
 
 module.exports = misc;

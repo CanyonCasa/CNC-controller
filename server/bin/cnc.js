@@ -1,6 +1,7 @@
 // (C) 2025 Enchanted Engineering
-//const VERSION = 1.00;   // 20250126 dvc Initial release
-const VERSION = '1.10';   // 20250126 dvc Initial release
+//const VERSION = 1.00;     // 20250126 dvc Initial release
+//const VERSION = '1.10';   // 20250126 dvc Second release
+const VERSION = '1.20';   // 20250205 dvc RFS add-on
 
 /*
 A simple web server for a RPi based CNC offline controller
@@ -27,30 +28,22 @@ require('./Extensions2JS');   // personal library of additions to JS language, o
 const fs = require('fs');
 const fsp = fs.promises;
 const zlib = require('zlib');
-const stream = require('stream');
 const path = require('path');
 const http = require('http');
-const { httpStatusMsg, mimeType, Scribe } = require('./misc');
-const SerialWS = require('./wsSerial');
-const FileWS = require('./wsFileServer');
-const RPiWS = require('./wsRPi');
-
-async function stat(spec) { try { return await fsp.stat(spec) } catch(e) { throw 404; }; };
-function sniff(callback) { // passthrough stream
-    return new stream.Transform({ 
-        objectMode: false,
-        transform(chunk, encoding, done) { callback(Buffer.from(chunk, encoding)); this.push(chunk); done(); }, 
-        flush(done) { done(); }
-    });
-};
-
+const { httpStatusMsg, mimeType, Scribe, sniff, stat } = require('./misc'); // helper functions
+const SerialWS = require('./wsSerial');     // serial port websocket handler
+const FileWS = require('./wsFileServer');   // file websocket handler
+const RelayWS = require('./wsRelayServer'); // file relay websocket handler
+const RPiWS = require('./wsRPi');           // RPi command websocket handler
 
 // read the hosting configuration from (cmdline specified arg or default) JS or JSON file ...
 const cfg = require(process.argv[2] || '../restricted/config');
+// determine server mode...
+const serverID = cfg.remoteFileServer ? 'Remote File' : 'CNC Offline Controller';
 
 // Scribe instance...
 const scribe = Scribe(cfg.scribe);  // must load config first
-scribe.info(`CNC Offline Controller Server[${VERSION}] setup ...`);
+scribe.info(`${serverID} Server[${VERSION}] setup ...`);
 
 // web server...
 let httpServer = null;
@@ -66,10 +59,10 @@ try {
             href: `http://${req.headers.host}${req.url}`,
             method: req.method.toUpperCase()
         };
-        try {
-            //console.log(req.url,req.headers);
-            if (ctx.method != 'GET') throw 405;
+        try {   // called for each request...
             scribe.log(scribe.format(cfg.log$,ctx));    // log request URL
+            if (ctx.method != 'GET') throw 405;
+            if (cfg.remoteFileServer) throw 404;
             // handle file request...
             if (ctx.url==='/') ctx.url = '/index.html'; // resolve homepage
             ctx.file = path.join(cfg.site.root,ctx.url);
@@ -108,27 +101,29 @@ try {
             res.end(JSON.stringify(msg));
         };
     }).listen(cfg.port);
-    scribe.info(`CNC Offline Controller Server setup on: ${cfg.host}:${cfg.port}`);
+    scribe.info(`${serverID} Server setup on: ${cfg.host}:${cfg.port}`);
 } catch(e) { 
-    scribe.fatal(`CNC Offline Controller Server failed to start --> ${e.toString()}`);
+    scribe.fatal(`${serverID} Server failed to start --> ${e.toString()}`);
 };
 if (!httpServer) process.exit();
 
-// web socket for serial...
-let wss = new SerialWS(cfg.ws.serial,Scribe);
-// web socket for file access...
-let wsf = new FileWS(cfg.ws.file,Scribe);
-// web socket for RPi control...
-let wspi = (cfg.ws.rpi) ? new RPiWS(cfg.ws.rpi,Scribe) : null;
+
+// conditionally define websocket connections...
+let wss = cfg.ws.serial ? new SerialWS(cfg.ws.serial,Scribe) : null;    // websocket for serial connection to CNC
+let wsf = cfg.ws.file ? new FileWS(cfg.ws.file,Scribe) : null;          // webscoket for local and USB file requests
+let wsrfs = cfg.ws.remote ? new RelayWS(cfg.ws.remote,Scribe) : null;   // websocket for remote file requests
+let wsrpi = cfg.ws.rpi ? new RPiWS(cfg.ws.rpi,Scribe) : null;           // websocket for RPi control...
 
 httpServer.on('upgrade', function upgrade(request, socket, head){
-    if (request.url===cfg.ws.serial.url) {
+    if (wsrfs && request.url==='/remote') {
+        wsrfs.upgrade(request, socket, head);
+    } else if (wss && request.url==='/serial') {
         wss.upgrade(request, socket, head);
-    } else if ((request.url===cfg.ws.file.url)) {
+    } else if (wsf && request.url==='/file') {
         wsf.upgrade(request, socket, head);
-    } else if (wspi && (request.url===cfg.ws.rpi.url)) {
-        wspi.upgrade(request, socket, head);
+    } else if (wsrpi && request.url==='/rpi') {
+        wsrpi.upgrade(request, socket, head);
     } else {
         socket.destroy();
-    }
+    };
 });

@@ -1,5 +1,5 @@
 [Unit]
-Description=Starts Chormium in kiosk mode for CNC server
+Description=Starts unclutter to hide mouse in Chormium kiosk mode
 After=graphical.target
 
 [Service]

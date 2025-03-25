@@ -1,22 +1,87 @@
 // Basic library of common extensions for Vue3...
 
-var VueLib3 = {
 
-    // convert a comma (or other) delimited string into an array
-    asList: (x,delim=/,\s*/) => x instanceof Array ? x : (x||'').split(delim),
-    // generates an n(=8) character unique ID of base (b=36, alphanumeric) ...
-    uniqueID: (n=8,b=36) => { var u=''; while(u.length<n) u+=Math.random().toString(b).slice(2); return u.slice(-n); },
+// convert a comma (or other) delimited string into an array
+let asList = (x,delim=/,\s*/) => x instanceof Array ? x : (x||'').split(delim);
+// generates an n(=8) character unique ID of base (b=36, alphanumeric) ...
+let uniqueID = (n=8,b=36) => { var u=''; while(u.length<n) u+=Math.random().toString(b).slice(2); return u.slice(-n); };
+
+var VueLib3 = {
 
     // this function adds library remaining elements to the specified app...
     applyLibToApp: function(app) {
-        for (let [key,value] of Object.entries(this.config||{})) app.config.globalProperties[key] = value;
-        for (let [key,value] of Object.entries(this.directives||{})) app.directive(key,value);
-        for (let [key,value] of Object.entries(this.components||{})) app.component(key,value);
-        for (let [key,value] of Object.entries(this.plugins||{})) app.use(value);
+        for (let [key,value] of Object.entries(VueLib3.config||{})) app.config.globalProperties[key] = value;
+        for (let [key,value] of Object.entries(VueLib3.directives||{})) app.directive(key,value);
+        for (let [key,value] of Object.entries(VueLib3.components||{})) app.component(key,value);
+        for (let [key,value] of Object.entries(VueLib3.plugins||{})) app.use(value);
     },
 
     components: {
 
+        // automatically loads dependencies as needed before generating contents...
+        'lazy-loader': {
+            data: ()=>({ ready: false }),
+            props: ['required', 'show'],
+            methods: {
+                done(x) { this.ready=x; this.$emit('ready',x); },
+                load() { this.loader().then(this.done).catch(e=>console.error(e)); },
+                loader: async function() {
+                    //console.log('lazy-loader:',this.required);
+                    if (!this.$$lazy || (!'files' in this.$lazy)) return false;
+                    if (this.$$lazy.files[this.required].loaded) return true; // previously loaded maybe by different instance
+                    // load could be single src or list of dependent sources; loads defines a list of file reference keys
+                    let loads = (this.$$app.lazy.files[this.required].sources||[this.required]).filter(s=>!this.$$app.lazy.files[s].loaded);
+                    let status = await Promise.all(loads.map(f=>{ // resolve unloaded dependencies
+                        switch (this.$$app.lazy.files[f].type) {
+                            case 'script': return this.loadScript(this.$$app.lazy.files[f].src);
+                            case 'stylesheet': return this.loadCSS(this.$$app.lazy.files[f].src);
+                            default: return false;
+                        };
+                    }));
+                    loads.map((f,i)=>{ this.$$app.lazy.files[f].loaded = status[i]; }); // update load status and run any callbacks
+                    for (let d of loads.map(f=>this.$$app.lazy.files[f].loaded && this.$$app.lazy.files[f].done).filter(Boolean))
+                        { await this.$$app.lazy[d] };
+                    let done = !this.$$app.lazy.files[this.required].loaded && this.$$app.lazy.files[this.required].done;
+                    if (status.every(Boolean)) {
+                        if (done)  await this.$$app.lazy[done](); 
+                        this.$$app.lazy.files[this.required].loaded = true;
+                        return true;
+                    } else {
+                        loads.filter(f=>!this.$$app.lazy.files[f].loaded).map(f=>console.warn(`Load failed: ${f}`));
+console.warn('autoload incomplete:',this.$$app.lazy.files);
+                    return false;
+                    };
+                },
+                loadCSS(link) {
+                    let elmt = document.createElement('link');
+                    let attrs = { rel: 'stylesheet', type: 'text/css', href: link };
+                    Object.keys(attrs).forEach(k=>elmt.setAttribute(k,attrs[k]));
+                    return new Promise((resolve,reject)=>{
+                        elmt.onload = evt => { resolve(true); };
+                        elmt.onerror = e => { console.error('loadCSS Error:', e); reject(e); };
+                        document.querySelector('head').appendChild(elmt);
+                    })
+                },
+                loadScript(script) {
+                    let elmt = document.createElement('script');
+                    return new Promise((resolve,reject)=>{
+                        elmt.onload = evt => { resolve(true); };
+                        elmt.onerror = e => { console.error('loadScript Error:', e); reject(e); };
+                        elmt.src = script;
+                        document.querySelector('head').appendChild(elmt);
+                    })
+                },
+            },
+            watch: {
+                show() { if (this.show&&!this.ready) this.load(); }
+            },
+            template: `
+                <div v-show="show">
+                    <slot v-if="ready">Content Goes Here!</slot>
+                    <span v-if="!ready">Autoloading, please wait...</span>
+                </div>`
+        },
+  
         // expandable block wrapper component...
         'blk-x': {
             data: () => ({expanded: false, opened: false}), // opened fired on first expand
@@ -78,88 +143,6 @@ var VueLib3 = {
                 </div>`
             },
 
-        // login dialog element to encapsulate user login interface...
-        'dialog-login': {
-            props: ['show', 'who'],
-            data: ()=>({
-            error: false,
-            formValid: false,
-            msg: '',
-            password: '',
-            token: '',
-            username: '',
-            usernameValid: false,
-            visible: false
-            }),
-            mounted() { this.restoreCreds(); }, 
-            methods: {
-                chg(dx) {
-                    this.usernameValid=this.$refs["login-username"].checkValidity();
-                    this.formValid=this.$refs["login-dialog"].checkValidity();
-                    if (dx.data===undefined) this.login(); // autocomplete does not return data!
-                },
-                getCode() {
-                    this.fetchJSON('GET','/user/code/'+this.username)
-                        .then(res=>{ this.error = !!res.jx.error; this.msg = res.jx.msg; })
-                        .catch(e=>{ console.error(e); this.error = true; this.msg = e.toString(); });
-                },
-                login(token) {
-                    var auth = token ? `Bearer ${token}` : `Basic ${btoa(this.username+":"+this.password)}`;// authorization header
-                    var creds = { payload: {}, token: '', error: true, msg: '', valid: false }; // default failure
-                    this.fetchJSON('GET','/login',{headers: {authorization: auth}})
-                    .then(res=>{
-                        creds.mergekeys(res.jx).mergekeys({ error: !!res.jx.error, msg: res.jx.msg||'' }); 
-                        creds.valid = verifyThat(creds.payload,'isNotEmpty');
-                        this.notify(creds);
-                        if (creds.valid && this.show) this.$emit('close'); })
-                    .catch(e=>{
-                        creds.msg = e.toString();
-                        this.notify(creds);
-                    });
-                },
-                logout() {  // called when logout event emitted by parent
-                    if (!this.token) return;  // only logout if user is logged in
-                    this.fetchJSON('GET','/logout',{headers: {authorization: `Bearer ${this.token}`}})
-                    .then(res=>this.notify(res.jx)).catch(e=>{ console.error(e); this.$emit('error',e); });
-                },
-                notify(creds={},restored) {
-                    this.error = creds.error || false;   // set local variables and store payload and token - valid or not
-                    this.msg = creds.msg || '';
-                    this.token = creds.token || '';
-                    this.storage.local =  { jwt: creds.valid ? { token: creds.token, payload: creds.payload } : undefined };
-                    let user = { member: '', token: this.token, valid: !!creds.valid }.mergekeys(creds.payload);   // define user
-                    this.username = user.username || '';  // update username field
-                    this.$emit('user',user,restored);     // pass user credentials to parent level
-                },
-                restoreCreds() {
-                    if (!this.storage.jwt) return;
-                    let { payload, token } = this.storage.jwt;
-                    let valid = payload && 1000*(payload.iat+payload.exp) > new Date().valueOf();
-                    let creds = valid ? { valid: true, token: token, payload: payload, error: false, msg: '' } :
-                        { valid: false, error: true, msg: 'Invalid or Expired login token' };
-                    this.notify(creds,true);
-                    if (valid && payload.ext) this.login(token);    // login extendable?, do so in background
-                }       
-            },
-            template: /* HTML */ `
-                <form class="login-dialog" ref="login-dialog" v-show="show">
-                    <span class="login-text">Sign in... <img class="login-close" @click="$emit('close')"></span>
-                    <span class="login-desc italic">Enter a valid username and password/code...</span>
-                    <input class="login-input validated" ref="login-username" type="text" placeholder="username" v-model="username" 
-                        v-pattern:username required autocomplete="username" @input="chg">
-                    <span class="login-desc" v-pattern:username.desc></span>
-                    <input ref="lgnPW" class="login-input login-pw validated" type="password" placeholder="password/code" v-model="password" 
-                        v-pattern:password required autocomplete="current-password" @input="chg" @keyup.enter="login()">
-                    <span class="login-desc" v-pattern:password.desc></span>
-                    <input type="button" class="login-button" :disabled="!usernameValid" @click.stop="getCode()" value="Get Code">
-                    <input type="button" class="login-button right" :disabled="!formValid" @click.stop="login()" value="SIGN IN">
-                    <span class="login-msg text-small"  v-if-class:text-error="error">{{ msg }}</span>
-                </form>`,
-            watch: {
-            //    show() { if (this.show) this.$nextTick(function() {this.$refs['login-username'].focus()}); }
-            }
-        },
-
         // component to add a floating element over window
         floater: {
             data: ()=>({}),
@@ -208,62 +191,15 @@ var VueLib3 = {
 
         // page layout default sections...
         generic: {
-            props: ['def',"show", "user"],
-            template: `<div v-html="def.content||'Loading (Generic), please wait...'" v-show="show"></div>`
-        },
-
-        // input text field with private value...
-        'private-input': {
-            props: ['modelValue', 'private'],
-            data: () => ({sel:{dir:'',start:0,end:0}, temp: '', text: '', timex: null}),
-            created() { this.temp = this.modelValue; this.text = '*'.repeat(this.temp.length); },
-            methods: {
-                chg(evt) {
-console.log(evt,typeof evt,evt.data,evt.srcElement.selectionDirection,evt.srcElement.selectionStart,evt.srcElement.selectionEnd)
-                    let ch = evt.data || '';
-                    if (evt.inputType==='deleteContentBackward') this.sel.start -= 1; // backspacekey; doesn't happen if start=0
-console.log('*data:',this.sel,this.temp,this.text)
-                        let num = this.sel.end - this.sel.start;
-                        this.temp = this.temp.splice(this.sel.start,num,ch);
-                        this.text = this.text.splice(this.sel.start,num,ch);
-                    //};
-console.log('data*:',this.temp,this.text)
-                    //this.temp = (ch===null) ? this.temp.slice(0,-1) : this.temp + ch;
-                    //this.text = (ch===null) ? this.text.slice(0,-1) : this.text + ch;
-                    if (this.timex) {
-                        clearTimeout(this.timex);
-                        this.timex = null;
-                    };
-                    if (this.private) {
-                        this.timex = setTimeout(()=>{ this.updateText(); this.timex = null; this.$emit('update:modelValue', this.temp); },300); 
-                    } else {
-                        this.text = this.temp;
-                        this.$emit('update:modelValue', this.temp);
-console.log('data**:',this.temp,this.text)
-                    };
-                    let [dir,start,end] = [evt.srcElement.selectionDirection,evt.srcElement.selectionStart,evt.srcElement.selectionEnd];
-                    this.sel = { dir, start, end };
-console.log('select*:',this.sel)
-                },
-                clk(evt) {
-                    let [dir,start,end] = [evt.srcElement.selectionDirection,evt.srcElement.selectionStart,evt.srcElement.selectionEnd];
-                    this.sel = { dir, start, end };
-console.log('select:',this.sel)
-                },
-                updateText() { this.text = this.private ? '*'.repeat(this.temp.length) : this.temp; }
-            },
-            template: `<input class="private-input" ref="elmt" type="text" :value="text" @input="chg" @click="clk">`,
-            watch: {
-                modelValue: function(mv) { if (mv!==this.temp) this.temp = mv; this.updateText(); },
-                private: function(p) { this.updateText(); }
-            }
+            props: ['page',"show", "user"],
+            template: `<div v-html="page.content||'Loading (Generic), please wait...'" v-show="show"></div>`
         },
 
         'toggle-button': {
             props: ['init',"labels"],
             data: function() { return {
                 state: Number(!!this.init),
-                lbls: this.labels ? VueLib3.asList(this.labels) : ['OFF','ON']
+                lbls: this.labels ? asList(this.labels) : ['OFF','ON']
             }},
             methods: {
                 change(state) {
@@ -424,62 +360,6 @@ console.log('select:',this.sel)
 
     plugins: {
 
-        // automatically loads dependencies before generating content...
-        // dependencies: arraof objects with type and src properties
-        // returns array of [error_flag, result_object]
-        lazyLoader: {
-            install: (app, options) => {
-
-                async function lazyLoader(dependencies=[]) {
-
-                    let trap = (evt) => {
-                        evt.preventDefault();
-                        const event = new CustomEvent('catch',{detail: {message: `${evt.filename} not found or syntax error`}});
-                        let src = dependencies.map(d=>d.src).filter(s=>evt.filename.includes(s))[0];
-                        let target = document.querySelector(`script[src="${src}"]`);
-                        target.dispatchEvent(event);
-                    };
-                    window.addEventListener('error',trap);
-                    let loads = await Promise.all(dependencies.map((d,i)=>new Promise(resolve=>{
-                        switch (d.type) {
-                            case 'js':
-                                // scripts may load but fail parsing so require (window error) trapping and fallback timeout...
-                                let timex = setTimeout((d) => resolve([true, `${d.src} timeout`]), 10000, d);
-                                let elmtJResolve = (x) => { timex = null; resolve(x); }
-                                let elmtJ = document.createElement('script');
-                                elmtJ.async = 'async' in d ? d.async : elmtJ.async;
-                                if (d.vue) {
-                                    elmtJ.addEventListener('LibReady', evt => elmtJResolve([false,d]));
-                                } else {
-                                    elmtJ.onload = evt => elmtJResolve([false, d]);
-                                }
-                                elmtJ.addEventListener('catch',evt => elmtJResolve([true, evt.detail.message]));
-                                elmtJ.onerror = e => elmtJResolve([true, e]);
-                                elmtJ.src = d.src;
-                                document.head.appendChild(elmtJ);
-                                break;
-                            case 'css':
-                                let elmtC = document.createElement('link');
-                                let attrs = { rel: 'stylesheet', type: 'text/css', href: d.src };
-                                Object.keys(attrs).forEach(k => elmtC.setAttribute(k, attrs[k]));
-                                elmtC.onload = evt => resolve([false, d]);
-                                elmtC.onerror = e => resolve([true, e]);
-                                document.head.appendChild(elmtC);
-                                break;
-                            default:
-                                resolve([true, `Unsupported dependency type ${d.type} for ${d.src}`])
-                        };
-                    })));
-                    window.removeEventListener('error', trap);
-                    return loads;
-                }
-
-                app.config.globalProperties.lazyLoader = lazyLoader;  // attach to app (i.e. this)
-
-            }
-
-        },
-
         // fetchJSON: Plugin to add browser promise based fetch function directly to Vue app 
         // optimized (i.e. simplified) for direct GET/POST/PUT of JSON data...
         fetchJSON: {
@@ -504,13 +384,13 @@ console.log('select:',this.sel)
                 function scribble(verbose, id) {
                     function scribe (stage,prompt,detail) { console.log(`##${id} fetch[${stage}]:`, prompt, detail); };
                     return verbose ? scribe : // true
-                        verbose===false ? ()=>{} : //false
-                        (stage,prompt,detail) =>{if (stage==='request'||stage==='response') scribe(stage,prompt,detail)}; // undefined                
+                        verbose===undefined ? (stage,prompt,detail) =>{if (stage==='request'||stage==='response') scribe(stage,prompt,detail)} :                
+                        ()=>{}; //false
                 }
 
                 // fetch function attached to app...
                 async function fetchJSON(method,url,options={}) {
-                    options.id = options.id || VueLib3.uniqueID(4,10);
+                    options.id = options.id || uniqueID(4,10);
                     const scribe = scribble(options.verbose,options.id);
                     options.method = method;  // add method to options, required.
                     options.url = url;        // save url to options for return with result
@@ -549,26 +429,9 @@ console.log('select:',this.sel)
 
                 app.config.globalProperties.fetchJSON = fetchJSON;  // attach to app (i.e. this)
 
-            }
-        },
+            },
 
-        // wrapper function to evaluate template literals...
-        templafy: {
-            install: (app) => {
-                function templafy(template, vars = {}) {    
-                    try {
-                        let [keyList,values] = [Object.keys(vars).join(','),Object.values(vars)];
-                        let literal = new Function('exprs','let func=('+keyList+')=>`'+template+'`; return func(...exprs)');
-                        return literal(values);
-                    } catch(e) { 
-                        console.error(`VueLib3.templafy[${template}]: ${e}`);
-                        return ''; 
-                    }
-                }
-            app.config.globalProperties.templafy = templafy;      // attach to app (i.e. this)
-            }
         },
-
 
         // calls an file element to launch 'File Open' dialog, reads the returned file accordingly, 
         //  processes file info, returns result as a promise...
@@ -709,5 +572,7 @@ console.log('select:',this.sel)
                 app.config.globalProperties.storage = storage;      // attach to app (i.e. this)
             }
         }
+ 
     }
+
 };

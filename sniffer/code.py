@@ -15,8 +15,8 @@ import supervisor
 MAX_LINE = 80
 BAUD = 115200
 
-txUART = busio.UART(board.TX, board.RX, baudrate=BAUD, timeout=0) # default 9600 8N1
-rxUART = busio.UART(board.D8, board.D9, baudrate=BAUD, timeout=0) # default 9600 8N1
+txUART = busio.UART(board.TX, board.RX, baudrate=BAUD, timeout=0) # default 115200 8N1
+rxUART = busio.UART(board.D8, board.D9, baudrate=BAUD, timeout=0) # default 115200 8N1
 
 def txCheck(tmp):
     buf = txUART.read(8)

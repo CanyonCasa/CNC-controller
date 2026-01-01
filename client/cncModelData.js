@@ -3,14 +3,24 @@
 let verbose = false; // for all console logging and transcripting
 
 var cncModelData = {
+    machine: { // machine defaults...
+        model: 'Anolex',
+        fudge: 61/60,                           // optional fudge factor adds ~1s/min
+        maxFeed: 2000,                          // mm/min (required)
+        maxTravel: {X: 300, Y: 300, Z: 75},     // mm (not presently used)
+        positioning: 'absolute',                // (presently only supports absolute)
+        units: 'mm'                             // default units
+    },
     params: {
         autoQuery: 'query', // false or name of query button, i.e. gcode=?
         cmdHistoryLength: 20,
-        cncBufferLength: 128,
+        cncBufferLength: 127,
+        cncBufferPause: 10, // wait time between buffer checks, milliseconds
+        cncTermination: '\r', // CNC expects only \r (or maybe \n) input line termination
         feed: 1000,
         feedMax: 2000,
         jog: 3,
-        jogs: [0.01,0.1,1,10,100],
+        jogs: [0.01,0.05,0.1,0.5,1,5,10,50,100],
         spindleDirection: 'M3',
         spindleMotor: 'M5',
         spindleSpeed: 10000,
@@ -35,16 +45,17 @@ var cncModelData = {
             time: '',
             date: '',
             type: '',
-            root: ''
+            root: '',
+            runtime: ''
         },
         job: {
             lines: [],
             ok: 0,
             sent: [],
         },
-        fileOverlayTemplates: [
-            "${pseudo}","${size}/${count}","${date}",
-            "","",""
+        fileOverlayTemplate: [
+            "${pseudo}","${date}",
+            "Runtime Estimate: ${runtime}","${size}B/${count}L",
         ],
         fileSave: 'logs',
         filesLocal: {
@@ -81,7 +92,7 @@ var cncModelData = {
             label: 'JOB',
             buttons: [
                 'home','log','filesL','filesR','filesU',
-                'unlock','query','','','',
+                'unlock','query','','','viewer',
                 'reset','check','resume','run','pause',
                 '','','','',''
             ],
@@ -92,8 +103,8 @@ var cncModelData = {
             buttons: [
                 'home','yplus','zplus','','setx',
                 'xminus','alt','xplus','','sety',
-                'zminus','yminus','jinc','','setz',
-                'unlock','reset','jdec','zprobe','setxyz'
+                'zminus','yminus','jinc','zprobe','setz',
+                'unlock','reset','jdec','setAlt','setxyz'
             ]
         },
         {
@@ -141,12 +152,20 @@ var cncModelData = {
             buttons: [
                 'home','','setHome','setAlt','',
                 'unlock','','','','',
-                'query','machine','','','',
+                'query','machine','','','debug',
                 'reset','','test','','rpi'
             ]
         }
     ],
     buttons: {
+        abort: {
+            label: 'ABORT...',
+            title: 'Abort current job',
+            action: 'call',
+            call: 'runJob',
+            args: ['abort'],
+            swap: 'run'
+        },
         alt: {
             label: 'Alt Pos',
             img: '/images/center.png',
@@ -166,6 +185,11 @@ var cncModelData = {
             title: 'Toggle GCODE check mode',
             action: 'gcode',
             gcode: '$C'
+        },
+        debug: {
+            label: 'DEBUG LEVEL',
+            title: 'Step debug level',
+            action: 'debug'
         },
         enter: {
             label: 'Enter',
@@ -258,7 +282,7 @@ var cncModelData = {
             title: 'Display GCODE log',
             action: 'call',
             call: 'popup',
-            args: ['info','log']
+            args: ['info','true']
         },
         machine: {
             label: 'CNC<br>REPORT',
@@ -363,6 +387,14 @@ var cncModelData = {
             call: 'popup',
             args: ['rpi','modal'] 
         },
+        run: {
+            label: 'RUN...',
+            title: 'Run current loaded job',
+            action: 'call',
+            call: 'runJob',
+            args: ['init'],
+            swap: 'abort'
+        },
         saveFile: {
             label: 'Save Info',
             img: 'imsages/save.png',
@@ -412,6 +444,13 @@ var cncModelData = {
             img: '/images/shift.png',
             action: 'shift'
         },
+        test: {
+            disabled: true,
+            title: 'Run test code',
+            label: 'TEST',
+            action: 'gcode',
+            gcode: 'G90 X0 Y0 Z0 F${feed}'
+        },
         unlock: {
             label: 'Unlock',
             title: 'Unlock machine',
@@ -419,19 +458,12 @@ var cncModelData = {
             action: 'gcode',
             gcode: '$X ?'
         },
-        run: {
-            label: 'RUN...',
-            title: 'Run current loaded job',
+        viewer: {
+            label: 'VIEWER',
+            title: 'Display GCODE Viewer',
             action: 'call',
-            call: 'runJob',
-            args: ['init']
-        },
-        test: {
-            disabled: true,
-            title: 'Run test code',
-            label: 'TEST',
-            action: 'gcode',
-            gcode: 'G90 X0 Y0 Z0 F${feed}'
+            call: 'popup',
+            args: ['viewer','true']
         },
         xminus: {
             label: 'X-',
@@ -489,10 +521,23 @@ var cncModelData = {
         }
     },
     macros: {
+        check: [
+            { action: 'gcode', gcode: '$C' },
+            { action: 'wait', wait: 100 },
+            { action: 'call', call: 'runjob', args: ['init'], wait: true },
+            { action: 'gcode', gcode: '$C' },
+        ],
         machine: [
             { action: 'gcode', gcode: '$G, $#, $I, $N, $$' },
             { action: 'wait', wait: 500 },
-            { action: 'call', call: 'popup', args: ['info','report']  }               
+            { action: 'call', call: 'viewInfo', args: ['report'] },
+            { action: 'call', call: 'popup', args: ['info','true'] }
         ]
     },
+    grblErrors: {
+        'default': 'Unknown GRBL error',
+        '9': 'Alarm - Locked Out!',
+        '20': 'Unsupported GCODE',
+        '22': 'Undefined Feed Rate'
+    }
 };

@@ -15,6 +15,8 @@
     --dark-bg: #209000!important;
     --dark-text: black!important;
     --dark-border: black!important;
+    --alert-ok: blue!important;
+    --alert-error: red!important;
 }
 html, body {
     font-family: var(--body_font);
@@ -52,12 +54,26 @@ div#status {
     background-color: var(--shade);
 }
 
-div#close {
+div#info-toolbar {
     height: 80px;
     width: 800px;
     background-color: var(--shade);
     opacity: 75%;
 }
+
+div#alert {
+    height: 80px;
+    width: 800px;
+    background-color: var(--light-bg);
+    opacity: 100%;
+    z-index: 20;
+    position: absolute;
+    top: 0;
+    left: 0;
+    white-space: pre;
+}
+div#alert .ok { padding: 16px; font-size: 24px; color: var(--alert-ok) }
+div#alert .error { padding: 16px; font-size: 24px; color: var(--alert-error) }
 
 div#text {
     position: absolute;
@@ -181,24 +197,34 @@ div#text {
     font-family: 'Andale mono', monospace;
 }
 
-.clip, .trash, .close { 
+.clip, .save, .trash, .close { 
     width: 48px;
     height: 48px;
     padding: 16px;
     background-color: var(--shade);
 }
 .close { float:right; }
+.view { 
+    display: inline-block;
+    font-size: 16px;
+    margin: 16px;
+    padding: 16px;
+    vertical-align: top;
+    background-color: var(--dark-text);
+    color: var(--light-text);
+}
 
 #log, #report {
     font-family: 'Andale mono', monospace;
     white-space: pre;
     height: 400px;
     overflow: scroll;
+    padding: 8px;
 }
 
 .file-grid {
     display: grid;
-    grid-template-columns: 424px 150px 212px;
+    grid-template-columns: 554px 212px;
     grid-template-rows: repeat(2,35px);
     row-gap: 0px;
     max-width: 786px;
@@ -219,10 +245,28 @@ div#text {
     overflow: hidden;
     max-width: 100%;
 }
-.file-item:first-child {
+.file-item:nth-child(2n+1) {
     text-align: left;
 }
 
+div#viewer {
+    background-color: gray;
+    position:absolute;
+    top: 0;
+    left: 0;
+    width: 800px;
+    height: 480px;
+    z-index: 10;
+}
+canvas#gcviewer {
+    background-color: pink;
+    position:absolute;
+    top: 0;
+    left: 80px;
+    width: 640px;
+    height: 480px;
+    z-index: 10;
+}
 
 .listing-grid {
     display: grid;

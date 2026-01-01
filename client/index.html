@@ -10,6 +10,10 @@
 <script src="/cdn/Vue3/vue.3.5.13.js"></script>
 <script src="/cdn/Vue3/VueLib3.js"></script>
 <script src="/cncModelData.js"></script>
+<script src="/cncEmulator.js"></script>
+<script>
+    const emulator = new CNCEmulator(cncModelData.machine);
+</script>
 
 </head>
 
@@ -65,18 +69,26 @@
         </div>
     </div><!--.content-->
     <div id="info" v-show="show.info">
-        <div id="close">
+        <div id="info-toolbar">
+            <span class="view" @click="viewInfo()">{{view.button}}</span>
             <img class="trash" src="/images/trash.png" @click="trash()" alt="?"/>
             <img class="clip" src="/images/clip.png" @click="clip(show.info)" alt="?"/>
             <img class="save" src="/images/save.png" @click="save(show.info)" alt="?"/>
             <img class="close" src="/images/close.png" @click="popup('info')" alt="?"/> 
         </div>
         <div id="text">
-            <div id="report" v-show="show.info==='report'">{{report}}</div>
-            <div id="log" v-show="show.info==='log'">{{script}}</div>
+            <div id="report" v-show="view.info==='report'">{{report}}</div>
+            <div id="log" v-show="view.info==='log'">{{script}}</div>
         </div>
-    </div><!--.info-->
-    <span>{{JSON.stringify(show)}}</span>
+    </div><!--info-->
+    <div id="viewer" v-show="show.viewer">
+        <canvas id="gcviewer" width="640px" height="480px"></canvas>
+        <img class="close" src="/images/close.png" @click="popup('viewer')" alt="?"/> 
+    </div><!--gcviewer-->
+    <div id="alert" v-show="show.alert">
+        <img class="close" src="/images/close.png" @click="popup('alert')" alt="?"/>
+        <div :class="alert.style">{{alert.msg}}</div>
+    </div><!--alert-->
     </div><!--#app-->
 
     <script src="/cncVue3Model.js"></script>

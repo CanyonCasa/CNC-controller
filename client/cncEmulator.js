@@ -8,11 +8,11 @@
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
         // Node.js/CommonJS environment
-        console.log('Loading CNC class library for Node...');
+        console.info('Loading CNC class library for Node...');
         module.exports = factory();
     } else {
         // Browser environment (IIFE)
-        console.log('Loading CNC class library for Browser...');
+        console.info('Loading CNC class library for Browser...');
         root.CNCEmulator = factory();
     }
 }(typeof self !== 'undefined' ? self : this, function () {
@@ -36,15 +36,15 @@ class CNCEmulator {
 
     constructor(machine={}) {
         this.machine = machine; // machine specific parameters; maxFeed definition required
-        if (!('maxFeed' in this.machine)) throw `No MAX Feed rate defined for machine!`;
-        this.cncInit();
+        if (!('maxFeed' in this.machine)) throw `No required MAX Feed rate defined for machine!`;
+        this.cncInit(); // initialize the CNC position and data
     }
 
     // computes a number of terms required for determining arc distance and drawing parameters
     calcArcParams(direction) {
         let geometry = 'arc'; // label differentiating calculated arc data from line data.
         let data = this.line.parameters;
-        let location = this.position; 
+        let location = Object.assign({},this.position); // make a copy of the position object
         let center = { X:location.X+data.I, Y:location.Y+data.J, Z:location.Z+data.K }; // locate the arc center
         // normalize vectors (i.e. 0,0 origin) and determine each vector's angle from x-axis and acute angle between them (theta)
         let fromVector = { X:location.X-center.X, Y:location.Y-center.Y, Z:location.Z-center.Z }; 
@@ -67,7 +67,7 @@ class CNCEmulator {
             distance = circumference - distance; // accute angle opposite of specified direction
         };
         this.line.calculatedData = { geometry, center,fromVector,toVector,radius, circumference, fromVectorAngle, toVectorAngle, theta, 
-            check, fullCircle, direction, distance };
+            check, fullCircle, direction, distance, location};
         return this.line.calculatedData;
     }
 
@@ -86,7 +86,6 @@ class CNCEmulator {
     // these instructions perform operations other than moving the CNC position
     // NOTE: nothing actually done with this information presently!
     cncControl() {
-        this.line.mode = 'NOP';
         switch (this.line.parsedParams.G) {
             case 20:
                 this.machine.units = 'inches';
@@ -103,56 +102,68 @@ class CNCEmulator {
             //    this.machine.positioning = 'relative';
             //    break;
             default:
-                console.log(`UNKNOWN/UNSUPPORTED GCODE[${this.line.number}]: ${this.line.raw}`);
+                console.warn(`UNKNOWN/UNSUPPORTED GCODE[${this.line.number}]: ${this.line.raw}`);
                 break;
         };
+    }
 
+    // motor control instruction interpretation; 
+    // returns an object with spindle state and speed information based on the M code
+    cncMotorStatus(line, number) {
+        let params = this.parseLine(line);
+        switch (params.M) {
+            case 2: return {spindleCode:'M2', spindle:'OFF', spindleSpeed:0};
+            case 3: // if spindle direction not fixed, set to CW, otherwise machine default direction
+                return {spindleCode:'M3', spindle:!this.machine.spindleDirectionFixed ? 'CW' : this.machine.spindleDirection, spindleSpeed:params.S};
+            case 4:
+                // if spindle direction not fixed, set to CCW, otherwise machine default direction
+                return {spindleCode:'M4', spindle:!this.machine.spindleDirectionFixed ? 'CCW' : this.machine.spindleDirection, spindleSpeed:params.S};
+            case 5:
+                return {spindleCode:'M5', spindle:'OFF', spindleSpeed:0};
+            default:
+                console.warn(`UNKNOWN/UNSUPPORTED MCODE[${number}]: ${line}`);
+                return {};
+        };
     }
 
     // reset the CNC position and clear out previously generated data
     cncInit() {
         this.position = { X: 0.0, Y: 0.0, Z: 0.0 };     // current C?NC location
         this.runTime = 0.0;                             // total job run time
+        this.gcodeLines = [];                           // the raw GCODE lines for the job
         this.gcodeData = [];                            // collection of the computed data for the job
     }
 
     // move the CNC to a new position
     cncReposition() {
         for (const key of Object.keys(this.position)) {
-            this.position[key] = this.line.parameters[key] || this.position[key];
+            this.position[key] = key in this.line.parameters ? this.line.parameters[key] : this.position[key];
         }
     }
 
-    // generate an estimate of the time required to execute an instruction
-    // based on per instruction feed rate and distance traveled
-    // NO acceleration profile presently used
-    computeInstructiontime() {
-        let distance = 0;
-        let it = 0;
-        this.line.mode = 'CUT'; // identify the path as a CUT operation (default)
+    // compute the distance travels for the particular instruction
+    computeTravel() {
         switch (this.line.parsedParams.G) {
             case 0: // fast linear movement
-                this.line.mode = 'MOVE'; // override instruction as a MOVE operation
-                distance = this.calcLinearParams().distance;
-                it = 60 * distance / this.feedRate('max'); // occurs at max speed
-                break;
             case 1: // slow linear movement
-                distance = this.calcLinearParams().distance;
-                it = 60 * distance / this.feedRate();
-                break;
+                return this.calcLinearParams();
             case 2: // clockwise circular movement
-                distance = this.calcArcParams(CNCEmulator.CW).distance;
-                it = 60 * distance / this.feedRate();
-                break;
+                return this.calcArcParams(CNCEmulator.CW);
             case 3: // counter clockwise movement
-                distance = this.calcArcParams(CNCEmulator.CCW).distance;
-                it = 60 * distance / this.feedRate();
-                break;
-            case 4: // hold
-                this.line.mode = 'NOP'; // override as a No OPeration
-                it = (this.lineParams.P/1000 || this.lineParams.S || 0); // assume P in ms and S in secs
+                return this.calcArcParams(CNCEmulator.CCW);
         };
-        this.line.instructionTime = it; // calulated as seconds
+        return {}; // assume P in ms and S in secs
+    }
+
+    // generate an estimate of the time (ms) required to execute an instruction
+    // based on per instruction feed rate (mm/min) and distance traveled (mm)
+    // NO acceleration profile presently used
+    computeInstructiontime() {
+        let g = this.line.parameters.G;
+        // G4 is a pause, no distance; assume parameter P in ms and S in secs
+        if (g===4) return (this.line.parameters.P || this.line.parameters.S*1000 || 0);
+        let feed = this.feedRate(!!g);  // G0 at max feed others at set rate
+        let it = 60000 * this.line.calculatedData.distance / feed; // convert from minutes to milliseconds
         return it; 
     }
 
@@ -163,14 +174,6 @@ class CNCEmulator {
         return this.line.parameters.F;
     }
 
-    // converts a time difference into a human readable hours, minutes, and seconds format
-    humanTime(difference,fixed=3) {    // converts a time difference in milliseconds into human readable format
-        let asTimeStr = t => t>86400000 ? `${Math.floor(t/86400000)} days, ${asTimeStr(t%86400000)}` : 
-            t>3600000 ? `${Math.floor(t/3600000)} hrs, ${asTimeStr(t%3600000)}` :
-            t>60000 ? `${Math.floor(t/60000)} mins, ${asTimeStr(t%60000)}` : `${(t/1000).toFixed(fixed)} secs`;
-        return asTimeStr(difference);
-    }
-
     // converts gcode instructions data (gcodeData) into formats needed for canvas drawing instructions
     prepViewData() { 
         this.viewData = [];
@@ -178,15 +181,16 @@ class CNCEmulator {
         for (let path of this.gcodeData) {
             if (path.mode==='NOP') continue;
             let {calculatedData:calc, parameters:params} = path;
-            let instruction = { geometry: calc.geometry, stroke: path.mode, moveTo: [position[0],position[1]] };
+            let instruction = { path: path, geometry:calc.geometry, stroke: path.mode, moveTo: [position[0],position[1]] };
             if (calc.geometry==='arc') {
-                let ccw = calc.direction !== 1; // couter clockwise flag
+                let ccw = calc.direction === 1; // couter clockwise flag
                 instruction.arc = [calc.center.X, calc.center.Y, calc.radius, calc.fromVectorAngle, calc.toVectorAngle, ccw ];
             } else {
                 instruction.lineTo = [params.X, params.Y]; // i.e. calc.geometry==='line'
             };
+            position = [params.X, params.Y, params.Z];  // new position is the instruction's target position
+            instruction.positionTo = position;
             this.viewData.push(instruction);
-            position = [params.X, params.Y, params.Z];
         };
         return this.viewData;
     }
@@ -208,20 +212,23 @@ class CNCEmulator {
         return {drawn,box};
     };
 
-    // convert GCODE into line records while computing run time 
-    processGCODE(gcodeLines, human=true) {
-        this.cncInit();
+    // convert GCODE into line records while computing run time in seconds
+    processGCODE(gcodeLines) {
+        this.cncInit(); // reset the CNC position and data
         this.gcodeLines = gcodeLines;
         let lineNumber = 0;
         let parameters = { X: 0.0, Y: 0.0, Z: 0.0 }; // modal data
         for (const line of gcodeLines) {
-            this.line = { raw: line, number: ++lineNumber };
-            if (this.line.raw.startsWith('G')) { // only GCODE "G" instrutions processed...
-                this.line.parsedParams = this.parseLine(this.line.raw);
-                for (const [key,value] of Object.entries(this.line.parsedParams)) { parameters[key]=value; };
-                this.line.parameters = Object.assign({},parameters);
-                if (this.line.parsedParams.G<5) {  // only movement instructions
-                    this.runTime += this.computeInstructiontime();
+            this.line = { raw: line, number: ++lineNumber, mode: 'NOP' };
+            this.line.parsedParams = this.parseLine(this.line.raw);
+            this.line.parameters = Object.assign({},this.line.parsedParams,parameters);
+            if (this.line.raw.startsWith('G')) { // only GCODE "G" instrutions processed for timing...
+                let G = this.line.parsedParams.G;
+                this.line.mode = G===0 ? 'MOVE' : G<4 ? 'CUT' : 'NOP'; // G0 is a MOVE, G1-3 are CUT, G4 is a NOP
+                if (G<5) {  // only movement instructions
+                    this.line.calculatedData = this.computeTravel();
+                    this.line.instructionTime = this.computeInstructiontime();
+                    this.runTime += this.line.instructionTime;
                     this.gcodeData.push(this.line);
                     this.cncReposition();
                 } else {
@@ -229,8 +236,8 @@ class CNCEmulator {
                 };
             };
         }
-        if (this.machine.fudge) this.runTime = this.runTime * this.machine.fudge; // option fudge factor adjustment
-        return human ? this.humanTime(this.runTime*1000) : this.runTime;
+        if (this.machine.fudge) this.runTime *= this.machine.fudge; // option fudge factor adjustment
+        return this.runTime;
     }
 
     // parses a GBRL line into a set of parameters

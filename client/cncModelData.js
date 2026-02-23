@@ -4,58 +4,31 @@ let verbose = false; // for all console logging and transcripting
 
 var cncModelData = {
     machine: { // machine defaults...
+        buffer: 127,                            // CNC buffer length in characters (required)
+        delay: 5,                               // ms of delay in run loop
         model: 'Anolex',
         fudge: 61/60,                           // optional fudge factor adds ~1s/min
         maxFeed: 2000,                          // mm/min (required)
         maxTravel: {X: 300, Y: 300, Z: 75},     // mm (not presently used)
         positioning: 'absolute',                // (presently only supports absolute)
-        units: 'mm'                             // default units
+        spindleDirection: 'CW',                 // 'CW' or 'CCW' (presently only CW)
+        spindleDirectionFixed: true,            // M3 or M4
+        spindleSpeed: 10000,
+        spindleSpeedMax: 10000,
+        termination: '\r', // CNC expects only \r (or maybe \n) input line termination
+        units: 'mm',                            // default units
+        zProbeOffset: 19.15
     },
     params: {
         autoQuery: 'query', // false or name of query button, i.e. gcode=?
         cmdHistoryLength: 20,
-        cncBufferLength: 127,
-        cncBufferPause: 10, // wait time between buffer checks, milliseconds
-        cncTermination: '\r', // CNC expects only \r (or maybe \n) input line termination
-        feed: 1000,
-        feedMax: 2000,
-        jog: 3,
         jogs: [0.01,0.05,0.1,0.5,1,5,10,50,100],
-        spindleDirection: 'M3',
-        spindleMotor: 'M5',
-        spindleSpeed: 10000,
-        spindleSpeedMax: 10000,
-        zProbeOffset: 19.15,
-        alarm: '',
         bf: '',
-        error: '',
-        fs: '',
-        mpos: '-,-,-',
-        msg: '',
-        state: '?',
-        units: 'mm',
-        wco: '-,-,-',
-        file: {
-            pseudo: '',
-            folder: '',
-            name: '',
-            size: 0,
-            count: 0,
-            lines: [],
-            time: '',
-            date: '',
-            type: '',
-            root: '',
-            runtime: ''
-        },
-        job: {
-            lines: [],
-            ok: 0,
-            sent: [],
-        },
         fileOverlayTemplate: [
-            "${pseudo}","${date}",
-            "Runtime Estimate: ${runtime}","${size}B/${count}L",
+            "${file.short}",
+            "${file.date}",
+            "Run: ${job.runtime} (${job.remaining})",
+            "${file.size}B/${file.count}L",
         ],
         fileSave: 'logs',
         filesLocal: {
@@ -77,14 +50,69 @@ var cncModelData = {
             accept: '.nc, .cnc, .gcode'
         },
         fileButtons: { close:'fClose', previous: 'fPrev', next: 'fNext' },
+        fs: '',
+        msg: '',
         statusTemplates: [
-            "M: ${mpos}","WS: ${wsEnabled?'OPEN':'CLSD'}","J: ${jogs[jog]}${units}","MX: ${spindleMotor==='M5'?'OFF':'ON'}",
-            "W: ${wco}","S: ${spindleSpeed}","F: ${feed}","D: ${spindleDirection==='M4'?'CCW':'CW'}",
-            "${msg}","${state}","A: ${alarm}","E: ${error}"
+            "M: ${state.mpos}",
+            "WS: ${state.wsEnabled?'OPEN':'CLSD'}",
+            "J: ${params.jogs[state.jog]}${state.units}",
+            "",
+            "W: ${state.wco}",
+            "S: ${state.speed}",
+            "F: ${state.feed}",
+            "MX: ${state.spindle}",
+            "${params.msg}",
+            "${state.state}",
+            "A: ${state.alarm}",
+            "E: ${state.error}"
         ],
         transcriptLength: 100,
-        wsEnabled: true,
         wsRemote: 'ws://192.168.0.179:9000/remote',
+    },
+    file: {
+        // request returned fields...
+        folder: '',
+        name: '',
+        pseudo: '',
+        root: '',
+        size: 0,
+        time: '',
+        type: '',
+        // generated fields
+        count: 0,
+        date: '',
+        lines: [],
+        short: ''   // limited length name for display
+    },
+    job: {
+        abort: false,
+        active: false,
+        bufSpace: 0,
+        estimate: 0,
+        line: '',
+        lines: [],
+        lineIndex: 0,
+        ok: 0,
+        processed: 0,
+        runtime: '',
+        remaining: '',
+        sent: [],
+        start: null,
+        waiting: null
+    },
+    state: {
+        alarm: '',
+        error: '',
+        feed: 0,
+        jog: 3,
+        mpos: '-,-,-',
+        speed: 0,
+        spindle: 'OFF',
+        spindleCode: 'M3',
+        state: 'Idle',
+        units: 'mm',
+        wco: '-,-,-',
+        wsEnabled: true,
         wsRPi: true
     },
     tabs: [
@@ -92,7 +120,7 @@ var cncModelData = {
             label: 'JOB',
             buttons: [
                 'home','log','filesL','filesR','filesU',
-                'unlock','query','','','viewer',
+                'unlock','query','','abort','viewer',
                 'reset','check','resume','run','pause',
                 '','','','',''
             ],
@@ -163,8 +191,7 @@ var cncModelData = {
             title: 'Abort current job',
             action: 'call',
             call: 'runJob',
-            args: ['abort'],
-            swap: 'run'
+            args: ['abort']
         },
         alt: {
             label: 'Alt Pos',
@@ -181,10 +208,14 @@ var cncModelData = {
             key: 'bksp'
         },
         check: {
-            label: 'CHECK<br>MODE',
-            title: 'Toggle GCODE check mode',
-            action: 'gcode',
-            gcode: '$C'
+            //label: 'CHECK<br>MODE',
+            //title: 'Toggle GCODE check mode',
+            //action: 'gcode',
+            //gcode: '$C'
+            label: 'CHECK',
+            title: 'Check current job GCODE',
+            action: 'macro',
+            macro: 'check'
         },
         debug: {
             label: 'DEBUG LEVEL',
@@ -264,18 +295,18 @@ var cncModelData = {
         jdec: {
             label: 'JOG<br>LESS',
             title: 'Decrease job distance parameter',
-            action: 'param',
-            param: 'jog',
-            //template: '${(Number(jog)-1+jogs.length)%jogs.length}'    // wrap around
-            template: '${Math.max(0,Number(jog)-1)}'                    // no wrap around
+            action: 'cfg',
+            cfg: 'state.jog',
+            //template: '${(Number(state.jog)-1+params.jogs.length)%params.jogs.length}'    // wrap around
+            template: '${Math.max(0,Number(state.jog)-1)}'                    // no wrap around
         },
         jinc: {
             label: 'JOG<br>MORE',
             title: 'Increase job distance parameter',
-            action: 'param',
-            param: 'jog',
-            //template: '${(Number(jog)+1)%jogs.length}'                // wrap around
-            template: '${Math.min(Number(jog)+1,jogs.length-1)}'        // no wrap around
+            action: 'cfg',
+            cfg: 'jog',
+            //template: '${(Number(state.jog)+1)%params.jogs.length}'                // wrap around
+            template: '${Math.min(Number(state.jog)+1,params.jogs.length-1)}'        // no wrap around
         },
         log: {
             label: 'GCODE<br>LOG',
@@ -294,16 +325,16 @@ var cncModelData = {
             disabled: true,
             label: 'FORWARD',
             title: 'Set spindle forward (CW): Not supported',
-            action: 'param',
-            param: 'spindleDirection',
+            action: 'cfg',
+            cfg: 'state.spindleCode',
             value: 'M3'
         },
         mccw: {
             disabled: true,
             label: 'REVERSE',
             title: 'Set spindle reverse (CCW): Not supported',
-            action: 'param',
-            param: 'spindleDirection',
+            action: 'cfg',
+            cfg: 'state.spindleCode',
             value: 'M4'
         },
         moff: {
@@ -317,15 +348,15 @@ var cncModelData = {
             label: 'ON',
             title: 'Turn the motor on',
             action: 'gcode',
-            gcode: '${spindleDirection} S${spindleSpeed}'
+            gcode: '${state.spindleCode} S${state.speed}'
         },
         m10: {
             label: '10%',
             title: 'Run spindle at 10% of full speed',
             action: 'macro',
             macro: [
-                {action: 'param', param: 'spindleSpeed',value: '1000'},
-                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+                {action: 'cfg', cfg: 'state.speed',value: '1000'},
+                {action: 'gcode', gcode: '${state.spindleCode} S${state.speed}'}
             ]
         },
         m25: {
@@ -333,8 +364,8 @@ var cncModelData = {
             title: 'Run spindle at 25% of full speed',
             action: 'macro',
             macro: [
-                {action: 'param', param: 'spindleSpeed',value: '2500'},
-                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+                {action: 'cfg', cfg: 'state.speed',value: '2500'},
+                {action: 'gcode', gcode: '${state.spindleCode} S${state.speed}'}
             ]
         },
         m50: {
@@ -342,8 +373,8 @@ var cncModelData = {
             title: 'Run spindle at 50% of full speed',
             action: 'macro',
             macro: [
-                {action: 'param', param: 'spindleSpeed',value: '5000'},
-                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+                {action: 'cfg', cfg: 'state.speed',value: '5000'},
+                {action: 'gcode', gcode: '${state.spindleCode} S${state.speed}'}
             ]
         },
         m100: {
@@ -351,8 +382,8 @@ var cncModelData = {
             title: 'Run spindle at 100% of full speed',
             action: 'macro',
             macro: [
-                {action: 'param', param: 'spindleSpeed',value: '10000'},
-                {action: 'gcode', gcode: '${spindleDirection} S${spindleSpeed}'}
+                {action: 'cfg', cfg: 'state.speed',value: '10000'},
+                {action: 'gcode', gcode: '${state.spindleCode} S${state.speed}'}
             ]
         },
         pause: {
@@ -392,12 +423,11 @@ var cncModelData = {
             title: 'Run current loaded job',
             action: 'call',
             call: 'runJob',
-            args: ['init'],
-            swap: 'abort'
+            args: ['init']
         },
         saveFile: {
             label: 'Save Info',
-            img: 'imsages/save.png',
+            img: '/images/save.png',
             action: 'call',
             call: 'save',
             params: ['file','usb']
@@ -521,11 +551,17 @@ var cncModelData = {
         }
     },
     macros: {
+        abort: [
+            { action: 'call', call: 'runjob', args: ['abort'] },    // stop any pending job
+            { action: 'reset' },                                    // issue a soft-reset
+            { action: 'gcode', gcode: '$X ?' },                     // clear alarm state to unlock
+            { action: 'gcode', gcode: 'G1 Z5' }                     // clear spindle above workpiece
+        ],
         check: [
-            { action: 'gcode', gcode: '$C' },
+            { action: 'gcode', gcode: '$C' },                       // enalbe check mode
             { action: 'wait', wait: 100 },
-            { action: 'call', call: 'runjob', args: ['init'], wait: true },
-            { action: 'gcode', gcode: '$C' },
+            { action: 'call', call: 'runjob', args: ['init'] },     // run current job
+            { action: 'gcode', gcode: '$C' },                       // disable check mode
         ],
         machine: [
             { action: 'gcode', gcode: '$G, $#, $I, $N, $$' },

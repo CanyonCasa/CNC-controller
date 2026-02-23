@@ -4,17 +4,33 @@
 //const VERSION = 1.10;   // 20250129 dvc Port to RPi
 //const VERSION = 1.20;   // 20250205 dvc Working remote file access
 //const VERSION = 1.30;   // 20251202 dvc UI updates
-const VERSION = '2.00:20260101';   // 20260101 dvc Added runtime estimate and viewer
+
+//const VERSION = '2.00:20260101';   // 20260101 dvc Added runtime estimate and viewer
+const VERSION = '2.10:20260210';   // 20260210 dvc fixed viewer bug; rework jobrun; organized data 
+
+function setNested(obj, path, value) {
+    let currentObj = obj;
+    let keys = path.split('.');
+    let key = keys.pop();
+    let fix = (obj, k) => obj[k]===undefined ? obj[k]={} : obj[k];
+    keys.forEach(k=>{ currentObj = fix(currentObj, k); });
+    currentObj[key] = value;
+};
 
 // Vue app definition...
 const cnc = Vue.createApp({
     data: function() { return {
-        tabs: cncModelData.tabs,
+        //imports from cncModelData.js...
         buttons: cncModelData.buttons,
+        file: cncModelData.file,
+        grblErrors: cncModelData.grblErrors,
+        job: cncModelData.job,
         params: cncModelData.params,
         machine: cncModelData.machine,
         macros: cncModelData.macros,
-        grblErrors: cncModelData.grblErrors,
+        state: cncModelData.state,
+        tabs: cncModelData.tabs,
+        // app state...
         activeTab: 0,
         activeTabView: 'buttons',
         alert: {
@@ -42,6 +58,7 @@ const cnc = Vue.createApp({
             info: 'log'
         },
         job : {
+            abort: false,
             active: false,
             bufSpace: cncModelData.params.cncBufferLength,
             elapsed: 0,
@@ -63,8 +80,9 @@ const cnc = Vue.createApp({
             if (tab.view==='keyboard') return buttons.map(b=>b==='' ? {} : this.buttons[b]||{action:'key',key:b});
             return buttons.map(b=>b==='' ? {} : this.buttons[b]||{label:`${b}?`});
         },
+        args() { let { machine, params, state, job, file } = this; return { machine, params, state, job, file }; },
         fileButtons() { return Object.keys(this.params.fileButtons).map(k=>this.buttons[this.params.fileButtons[k]]); },
-        fileDetails() { return (this.params.fileOverlayTemplate || []).map(t=>this.templafy(t,this.params.file)); },
+        fileDetails() { return (this.params.fileOverlayTemplate || []).map(t=>this.templafy(t,this.args)); },
         listingSorted() {
             return [...(this.listing.map((f,i)=>(f.type==='dir'?{i:i,n:`[${f.name}]`}:null)).filter(x=>x)),
                     ...(this.listing.map((f,i)=>(f.type==='file'?{i:i,n:f.name}:null)).filter(x=>x))];
@@ -73,7 +91,7 @@ const cnc = Vue.createApp({
         overlay() { return this.tabs[this.activeTab].overlay || '' },
         report() { return 'Machine Report...\n' + Object.entries(this.reportSet).map(e=>`  ${e[0]}: ${e[1]}`).join('\n')+'\n...End of Report'; },
         script() { return this.transcript.join('\n'); },
-        status() { return (this.params.statusTemplates || []).map(t=>this.templafy(t,this.params)); },
+        status() { return (this.params.statusTemplates || []).map(t=>this.templafy(t,this.args)); },
         wsMsg() { return this.params.wsEnabled ? 'OFF' : 'ON' }
     },
     created() {
@@ -87,7 +105,7 @@ const cnc = Vue.createApp({
     methods: {
         cncRX(text) {
             if (this.job.active) return this.runJob('rx',text);
-            if (verbose) console.log(`[cncRX]> ${text}`);
+            if (verbose) console.info(`[cncRX]> ${text}`);
             if (text==='ok') { 
                 this.params.error = 'OK';
                 this.params.alarm = 'OK';
@@ -127,7 +145,7 @@ const cnc = Vue.createApp({
                 console.error('Copy to clipboard failed!');
             };
         },
-        drawGCODE(tx,ty) { // draw GCODE in viewer canvas
+        async drawGCODE(tx,ty) { // draw GCODE in viewer canvas
             let drawStyle= (style) =>style==='MOVE' ? 'red' : 'blue';
             let limits = emulator.prepViewLimits();  // this provides the scaling info
             let instructions = emulator.prepViewData(); // this converts loaded job gcode into drawing instructions
@@ -147,7 +165,8 @@ const cnc = Vue.createApp({
                 ctx.beginPath();
                 ctx.moveTo(...ix.moveTo);
                 if (ix.geometry==='arc') {
-                    ctx.arc(...ix.arc);
+                    let arcData = [...ix.arc.slice(0,-1),!ix.arc[ix.arc.length-1]]; // flip ccw flag because coordinate system is flipped in Y 
+                    ctx.arc(...arcData);
                 } else {
                     ctx.lineTo(...ix.lineTo);
                 };
@@ -188,7 +207,7 @@ const cnc = Vue.createApp({
                 console.error('fileResponse',error);
                 this.params.error = 'WS?';
             } else if (verbose) {
-                console.log('fileResponse:',msg);
+                console.info('fileResponse:',msg);
             };
             switch (msg.action) {
                 case 'list':
@@ -196,12 +215,17 @@ const cnc = Vue.createApp({
                     this.show.listing = true;
                     break;
                 case 'get':
+                    this.file = msg.meta;
                     let d = new Date(msg.meta.time);
-                    msg.meta.date = new Date(+d-d.getTimezoneOffset()*60*1000).toISOString().replace(/:[^:]+$/,'');
-                    msg.meta.lines = msg.contents.split(/\r?\n/);
+                    this.file.date = new Date(+d-d.getTimezoneOffset()*60*1000).toISOString().replace(/:[^:]+$/,'');
+                    this.file.lines = msg.contents.split(/\r?\n/);
                     msg.meta.count = msg.meta.lines.length;
-                    this.params.file = msg.meta;
-                    this.params.file.runtime = emulator.processGCODE(msg.meta.lines);
+                    this.file.short = this.file.pseudo.length>40 ? 
+                        this.file.pseudo.substring(0,20)+'...'+this.file.pseudo.substring(this.file.pseudo.length-20): 
+                        this.file.pseudo;
+                    this.job.estimate = emulator.processGCODE(msg.meta.lines);
+                    this.job.runtime = this.humanTime(this.job.estimate);
+                    this.job.remaining = '-'
                     this.drawGCODE();
                     break;
                 case 'put':
@@ -215,49 +239,49 @@ const cnc = Vue.createApp({
         humanTime(difference) {    // converts a time difference in milliseconds into human readable format
             let asTimeStr = t => t>86400000 ? `${Math.floor(t/86400000)} days, ${asTimeStr(t%86400000)}` : 
                 t>3600000 ? `${Math.floor(t/3600000)} hrs, ${asTimeStr(t%3600000)}` :
-                t>60000 ? `${Math.floor(t/60000)} mins, ${asTimeStr(t%60000)}` : `${t/1000} secs`;
+                t>60000 ? `${Math.floor(t/60000)} mins, ${asTimeStr(t%60000)}` : `${(t/1000).toFixed(3)} secs`;
             return asTimeStr(difference);
         },
         async pickButton(b) {
             if (b.disabled) return;
-            if (verbose) console.log('Button:',b)
+            if (verbose) console.info('Button:',b)
             switch (b.action) {
                 case 'gcode':
                     let glist = b.gcode.split(',');
                     glist.forEach(instruction=>{
                         let gcode = this.templafy(instruction,this.params).trim();
                         //window.cncTX(gcode);
-                        this.wsCNC.send(gcode,this.params.cncTermination);
+                        this.wsCNC.send(gcode,this.machine.termination);
                         if (gcode!='?') this.params.msg = `< ${gcode}`
                         this.scribe(`< ${gcode}`);
-                        if (verbose) console.log(`TX[${b.action}]: ${gcode}`);
+                        if (verbose) console.info(`TX[${b.action}]: ${gcode}`);
                     });
                     break;
-                case 'param':
-                    if (!('param' in b)) return console.warn('Missing param name!');
-                    if ('value' in b) { 
-                        this.params[b.param] = b.value;
+                case 'cfg':
+                    if (!('cfg' in b)) return console.warn('Missing config name!');
+                    if ('value' in b) {
+                        setNested(this, b.cfg, b.value);
                     } else if (b.template) {
-                        this.params[b.param] = this.templafy(b.template,this.params);
+                        setNested(this, b.cfg, this.templafy(b.template,this));
                     } else {
-                        return console.warn(`NO value or template specified for param!`);
+                        return console.warn(`NO value or template specified for cfg!`);
                     };
-                    if (verbose) console.log(`Param ${b.param} changed to ${this.params[b.param]}!`);
+                    if (verbose) console.info(`Config[${b.cfg}] changed to ${b.value}!`);
                     break;
                 case 'macro':  // equivalent to a series of buttons...
                     let macro = (b.macro instanceof Array) ? b.macro : (this.macros?.[b.macro] || []);
-                    for (m of macro) this.pickButton(m);
+                    for (m of macro) await this.pickButton(m);
                     break;
                 case 'reset':   // Ctrl-x: soft-reset
                     //window.cncTX(String.fromCharCode(0x18));
-                    this.wsCNC.send(String.fromCharCode(0x18),this.params.cncTermination);
+                    this.wsCNC.send(String.fromCharCode(0x18),this.machine.termination);
                     this.scribe(`< CTRL-X (soft reset)`);
                     break;
                 case 'wait':
                     await this.wait(b.wait);
                     break;
                 case 'call':
-                    this[b.call].apply(this,b.args);
+                    await this[b.call].apply(this,b.args);
                     break;
                 case 'key':
                     switch (b.key) {
@@ -291,7 +315,7 @@ const cnc = Vue.createApp({
                     this.params.msg = `Transcript Level: ${this.transcriptLevels[this.transcriptLevel]}`
                     break;
                 default: {
-                    console.log(`UNKONW button action: '${b.action}`);
+                    console.error(`UNKNOWN button action: '${b.action}`);
                 }
             };
         },
@@ -329,28 +353,9 @@ const cnc = Vue.createApp({
                     break;
             };
         },
-        rpiResponse(msg) { if (msg.error) { console.error(msg.error) } else { console.log(msg.msg)}; },
+        rpiResponse(msg) { if (msg.error) { console.error(msg.error) } else { console.info(msg.msg)}; },
         async runJob(action, text) {
             switch (action) {
-                case 'init': // initialize job
-                    this.job = {
-                        active: true,
-                        elapsed: '',
-                        lines: this.params.file.lines.slice(0),    // copy lines from active file
-                        lineIndex: 0,
-                        processed: 0,
-                        sent: [],
-                        start: + new Date()
-                    };
-                    if (!this.job.lines.length) {
-                        this.job.active = false;
-                        this.postAlert('No job appears loaded!','error');
-                    }  else {
-                        this.transcript = [];
-                        this.scribe(`# Running job ${this.params.file.pseudo}...`);
-                        setTimeout(this.runJob,100,'run');
-                    };
-                    break;
                 case 'rx': // CNC feedback...
                     if (text==='ok') { 
                         let done = this.job.sent.shift() || 'empty';
@@ -372,50 +377,76 @@ const cnc = Vue.createApp({
                         this.postAlert(`~ ${text}`);
                     };
                     break;
-                case 'run': // process job... will be called repeatedly
-                    while (this.job.lineIndex < this.job.lines.length) { 
-                        this.job.line = this.job.lines[this.job.lineIndex].replace(/ +|;.*$/g,'').trim(); // get current line, stripping comments and whitespace
-                        if (!this.job.line) { // ignore blank lines
+                case 'init': // initialize job
+                    this.job = {
+                        active: true,
+                        bufSpace: this.machine.buffer,
+                        estimate: this.job.estimate,
+                        lines: this.file.lines.slice(0),    // copy lines from active file
+                        lineIndex: 0,
+                        processed: 0,
+                        remaining: '-',
+                        runtime: this.job.runtime,
+                        sent: [],
+                        start: + new Date()
+                    };
+                    if (!this.job.lines.length) {
+                        this.job.active = false;
+                        this.postAlert('No job appears loaded!','error');
+                        return null
+                    }  else {
+                        this.transcript = [];
+                        this.scribe(`# Running job ${this.file.pseudo}...`);
+                        await this.wait(10*this.machine.delay); // give UI a moment to update before starting job
+                    };
+                    // flow through to run...
+                case 'run': // process job...
+                    while (this.job.active && (this.job.lineIndex < this.job.lines.length)) {
+                        // get next line, clean it up, and skip blanks and comments...
+                        this.job.line = this.job.lines[this.job.lineIndex].replace(/ +|;.*$|^\(.*\)$/g,'').trim(); 
+                        if (!this.job.line) { // ignore blank lines, ; comments, and (FreeCAD style comments) ...
                             this.job.lineIndex++;
-                            this.updateJobStatus();
+                            this.updateJobStatus('line');
                             continue
-                        } else if (this.job.line.startsWith('(') /* && this.job.line.endsWith(')' -- a FreeCAD comment*/) {
-                            this.job.lineIndex++;
-                            this.updateJobStatus();
-                            this.scribe(`- [${this.job.lineIndex}]: ${this.job.line}`); // log the comment for reference
                         } else { // try to send the line...
                             // used buffer portion is total of lines+termination in sent queue...
-                            let bufUsed = this.job.sent.reduce((sum,lx)=>sum+lx.length+this.params.cncTermination.length,0);
-                            this.job.bufSpace = this.params.cncBufferLength - bufUsed;
-                            if (this.job.bufSpace < this.job.line.length) {
-                                if (!this.job.waiting) this.updateJobStatus('wait');
-                                break; // leave while, not enough room in buffer to send line, wait for buffer to clear space
+                            let bufUsed = this.job.sent.reduce((sum,lx)=>sum+lx.length+this.machine.termination.length,0);
+                            this.job.bufSpace = this.machine.buffer - bufUsed;
+                            if (this.job.bufSpace<(this.job.line.length+this.machine.termination.length)) { 
+                                // not enough room in buffer to send line, wait for buffer to clear space
+                                if (!this.job.waiting) this.updateJobStatus('wait');  // set wating state
                             } else {
-                                if (this.job.waiting) this.updateJobStatus('proceed');
-                                this.wsCNC.send(this.job.line,this.params.cncTermination);
+                                if (this.job.waiting) this.updateJobStatus('proceed'); // clear waiting state
+                                this.wsCNC.send(this.job.line,this.machine.termination);
                                 this.job.lineIndex++;
                                 this.job.sent.push(this.job.line);
                                 this.scribe(`< ${this.job.line}`);
+                                if (this.job.line.startsWith(M)) Object.assign(this.state,cncMotorStatus(this.job.line));
                             };
                         };
+                        await this.wait(this.machine.delay||5); // pause between lines to give CNC a chance to breathe
                     };
-                    if (this.job.lineIndex < this.job.lines.length) { // not done yet, wait for buffer to empty a bit and continue
-                        setTimeout(this.runJob,this.params.cncBufferPause||5,'run','wait');
-                    } else { // job sent, waiting on queue to clear
-                        while (this.job.sent.length>0) await this.wait(10);
+                    if (this.job.active) {
+                        // job sent, waiting on queue to clear...
+                        while (this.job.sent.length>0) await this.wait(this.machine.delay||5);
+                        // done...
                         this.job.active = false;
-                        this.job.elapsed = this.humanTime(+ new Date() - this.job.start)
-                        this.scribe(`# Job completed successfully in ${this.job.elapsed}!`);
-                        this.postAlert(`Job completed successfully in ${this.job.elapsed}!`);
                         this.updateJobStatus('done');
+                        let elapsed = this.humanTime(+ new Date() - this.job.start);
+                        this.scribe(`# Job completed successfully in ${elapsed}!`);
+                        this.postAlert(`Job completed successfully in ${elapsed}!`);
+                        break;
+                    } else {
+                        this.scribe(`# Job aborted!`);
+                        this.postAlert(`Job aborted!`);
                     };
-                    break;
                 case 'abort':
+                    this.job.active = false;
                     break;
             };
         },
         save(what,where) {
-            where = where || this.params.fileSave;
+            where = where || this.fileSave;
             let meta = { root: where, folder: '', name: 'gcode.log' };
             let contents = '';
             switch (what) {
@@ -437,7 +468,7 @@ const cnc = Vue.createApp({
             if (this.job.active) return; // don't limit transcript length
             if (this.transcript.length>(this.params.transcriptLength||50)) this.transcript.shift();
         },
-        templafy (template, vars = {}) {    // wrapper function to evaluate template literals...
+        templafy (template, vars={}) {    // wrapper function to evaluate template literals...
             try {
                 let [keyList,values] = [Object.keys(vars).join(','),Object.values(vars)];
                 let literal = new Function('exprs','let func=('+keyList+')=>`'+template+'`; return func(...exprs)');
@@ -454,18 +485,21 @@ const cnc = Vue.createApp({
                     this.job.waiting = + new Date();
                     this.scribe(`# (${this.job.lineIndex+1}): line[${this.job.line.length}] > Job buffer[${this.job.bufSpace}] waiting!`);
                     break;
-                case 'proceed':
+                case 'proceed':  // flow through to line
                     let after = + new Date() - this.job.waiting;
                     this.scribe(`# (${this.job.lineIndex+1}): Job buffering proceeding after ${after} ms`);
                     this.job.waiting = null;
                     break;
+                case 'line':
+                   this.job.processed++;
+                    this.params.msg = `Processed: ${this.job.processed}/${this.job.lineIndex+1} (${this.job.lines.length})`;
+                    let elapsed = + new Date() - this.job.start;
+                    this.job.remaining = this.humanTime(Math.max(0,this.job.estimate - elapsed));
+                    break;
                 case 'done':
                     this.params.msg = 'Job complete!';
-                    break
-                default:
-                    this.job.processed++;
-                    this.params.msg = `Processed: ${this.job.processed}/${this.job.lineIndex+1} (${this.job.lines.length})`;
-            };
+                    break;
+``             };
         },
         viewInfo(view) { // set or toggle log and report contents
             this.view = view=='report' ? {info:'report', button:'LOG'} : 
@@ -485,29 +519,29 @@ const cnc = Vue.createApp({
                 connect: function connect() {
                     if (tmp.ws) tmp.ws = null;          // destroy any previous websocket
                     tmp.ws = new WebSocket(tmp.url);    // create a new websocket
-                    if (verbose) console.log(`${tmp.tag} websocket created...`);
+                    if (verbose) console.info(`${tmp.tag} websocket created...`);
                     tmp.ws.addEventListener('error',(e)=>console.error);
                     tmp.ws.addEventListener('message',(msg)=>{
                         //console.log(msg.data)
                         let text = msg.data.replace(/\r?\n|\r/,'');
-                        if (verbose) console.log(`>[${tmp.tag}] ${text}`);
+                        if (verbose) console.info(`>[${tmp.tag}] ${text}`);
                         let data = tmp.mode==='JSON' ? JSON.parse(text) : text;
                         if (tmp.listener) tmp.listener(data);
                     });
-                    tmp.ws.addEventListener('open',()=>{ tmp.connected=true; console.log(`${tmp.tag} websocket connected`); });
+                    tmp.ws.addEventListener('open',()=>{ tmp.connected=true; console.info(`${tmp.tag} websocket connected`); });
                     tmp.ws.addEventListener('close',()=>{
                         tmp.connected = false;
-                        console.log(`${tmp.tag} websocket disconnected`);
+                        console.info(`${tmp.tag} websocket disconnected`);
                         if (tmp.reconnect) setTimeout(tmp.connect,1000);
                 });
                 },
                 disconnect: function () {
                     tmp.ws.close();
-                    if (verbose) console.log(`${tmp.tag} websocket destroyed!`);
+                    if (verbose) console.info(`${tmp.tag} websocket destroyed!`);
                 },
                 send: function (data, termination='\r\n') {
                     let text = tmp.mode==='JSON' ? JSON.stringify(data) : data;
-                    if (verbose) console.log(`<[${tmp.tag}] ${text}\n`);
+                    if (verbose) console.info(`<[${tmp.tag}] ${text}\n`);
                     tmp.ws.send(text + termination);
                 }
             };

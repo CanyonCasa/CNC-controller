@@ -52,7 +52,7 @@ Machine Report...
 ...End of Report
 */
 
-const Anolex = { // machine defaults...
+const ANOLEX = { // machine defaults...
     acceleration: {X: 150, Y: 150, Z: 150}, // mm/s^2 (not presently used)
     fudge: 61/60,                           // optional fudge factor adds ~1s/min
     homing: 500,                            // mm/min (not presently used)
@@ -67,14 +67,22 @@ const Anolex = { // machine defaults...
 
 const fs = require('fs');
 const CNCEmulator = require('./cncEmulator');
-const cnc = new CNCEmulator(Anolex);
-const file = process.argv[2] || './nc/simple test.nc';
+const cnc = new CNCEmulator(ANOLEX);
+const file = process.argv[2] || './nc/test.nc';
 const nc = fs.readFileSync(file,'utf-8');
 const lines = nc.split(/\r?\n/);
+
+function humanTime(difference) {    // converts a time difference in milliseconds into human readable format
+    let asTimeStr = t => t>86400000 ? `${Math.floor(t/86400000)} days, ${asTimeStr(t%86400000)}` : 
+        t>3600000 ? `${Math.floor(t/3600000)} hrs, ${asTimeStr(t%3600000)}` :
+        t>60000 ? `${Math.floor(t/60000)} mins, ${asTimeStr(t%60000)}` : `${(t/1000).toFixed(3)} secs`;
+    return asTimeStr(difference);
+}
 
 console.log(`${file}: ${nc.length} bytes, lines: ${lines.length}`);
 let estimate = cnc.processGCODE(lines);
 console.log(`gcode:${cnc.gcodeData.length}`);
-console.log(`runtime: ${estimate}`);
-//console.log(cnc.prepViewData())
-cnc.prepViewData()
+console.log(`runtime: ${humanTime(estimate)}`);
+let drawing = cnc.prepViewData();
+//console.log(drawing.length, JSON.stringify(drawing.slice(8,11),null,2));
+//cnc.prepViewData()

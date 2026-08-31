@@ -58,7 +58,7 @@ var cncModelData = {
             "J: ${params.jogs[state.jog]}${state.units}",
             "",
             "W: ${state.wco}",
-            "S: ${state.speed}",
+            "S: ${state.spindleSpeed}",
             "F: ${state.feed}",
             "MX: ${state.spindle}",
             "${params.msg}",
@@ -67,7 +67,9 @@ var cncModelData = {
             "E: ${state.error}"
         ],
         transcriptLength: 100,
-        wsRemote: 'ws://192.168.0.179:9000/remote',
+        //wsRemote: 'ws://192.168.0.179:9000/remote',
+        wsRemote: true,
+        wsRPi: true
     },
     file: {
         // request returned fields...
@@ -103,10 +105,10 @@ var cncModelData = {
     state: {
         alarm: '',
         error: '',
-        feed: 0,
+        feed: 1000,
         jog: 3,
         mpos: '-,-,-',
-        speed: 0,
+        spindleSpeed: 0,
         spindle: 'OFF',
         spindleCode: 'M3',
         state: 'Idle',
@@ -304,7 +306,7 @@ var cncModelData = {
             label: 'JOG<br>MORE',
             title: 'Increase job distance parameter',
             action: 'cfg',
-            cfg: 'jog',
+            cfg: 'state.jog',
             //template: '${(Number(state.jog)+1)%params.jogs.length}'                // wrap around
             template: '${Math.min(Number(state.jog)+1,params.jogs.length-1)}'        // no wrap around
         },
@@ -479,7 +481,7 @@ var cncModelData = {
             title: 'Run test code',
             label: 'TEST',
             action: 'gcode',
-            gcode: 'G90 X0 Y0 Z0 F${feed}'
+            gcode: 'G90 X0 Y0 Z0 F${state.feed}'
         },
         unlock: {
             label: 'Unlock',
@@ -500,7 +502,7 @@ var cncModelData = {
             img: '/images/x-.png',
             title: 'X LEFT',
             action: 'gcode',
-            gcode: '$J=G91 X-${jogs[jog]} F${feed}',
+            gcode: '$J=G91 X-${params.jogs[state.jog]} F${state.feed}',
             params: ['jog','rate']
         },
         xplus: {
@@ -508,7 +510,7 @@ var cncModelData = {
             img: '/images/x+.png',
             title: 'X RIGHT',
             action: 'gcode',
-            gcode: '$J=G91 X${jogs[jog]} F${feed}',
+            gcode: '$J=G91 X${params.jogs[state.jog]} F${state.feed}',
             params: ['jog']
         },
         yminus: {
@@ -516,7 +518,7 @@ var cncModelData = {
             img: '/images/y-.png',
             title: 'Y FRONT',
             action: 'gcode',
-            gcode: '$J=G91 Y-${jogs[jog]} F${feed}',
+            gcode: '$J=G91 Y-${params.jogs[state.jog]} F${state.feed}',
             params: ['jog']
         },
         yplus: {
@@ -524,7 +526,7 @@ var cncModelData = {
             img: '/images/y+.png',
             title: 'Y BACK',
             action: 'gcode',
-            gcode: '$J=G91 Y${jogs[jog]} F${feed}',
+            gcode: '$J=G91 Y${params.jogs[state.jog]} F${state.feed}',
             params: ['jog']
         },
         zminus: {
@@ -532,7 +534,7 @@ var cncModelData = {
             img: '/images/z-.png',
             title: 'Z DOWN',
             action: 'gcode',
-            gcode: '$J=G91 Z-${jogs[jog]} F${feed}',
+            gcode: '$J=G91 Z-${params.jogs[state.jog]} F${state.feed}',
             params: ['jog']
         },
         zplus: {
@@ -540,14 +542,14 @@ var cncModelData = {
             img: '/images/z+.png',
             title: 'Z UP',
             action: 'gcode',
-            gcode: '$J=G91 Z${jogs[jog]} F${feed}',
+            gcode: '$J=G91 Z${params.jogs[state.jog]} F${state.feed}',
             params: ['jog']
         },
         zprobe: {
             label: 'Set<br>Z-PROBE',
             title: 'Run Z-probe setting gcode',
             action: 'gcode',
-            gcode: 'G38.2 Z-5 F50, G92 Z${zProbeOffset}, G53 G0 Z-1, ?'
+            gcode: 'G38.2 Z-5 F50, G92 Z${machine.zProbeOffset}, G53 G0 Z-1, ?'
         }
     },
     macros: {

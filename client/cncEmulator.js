@@ -107,9 +107,17 @@ class CNCEmulator {
         };
     }
 
+    // reset the CNC position and clear out previously generated data
+    cncInit() {
+        this.position = { X: 0.0, Y: 0.0, Z: 0.0 };     // current C?NC location
+        this.runTime = 0.0;                             // total job run time
+        this.gcodeLines = [];                           // the raw GCODE lines for the job
+        this.gcodeData = [];                            // collection of the computed data for the job
+    }
+
     // motor control instruction interpretation; 
     // returns an object with spindle state and speed information based on the M code
-    cncMotorStatus(line, number) {
+    cncMotorStatus(line) {
         let params = this.parseLine(line);
         switch (params.M) {
             case 2: return {spindleCode:'M2', spindle:'OFF', spindleSpeed:0};
@@ -121,17 +129,9 @@ class CNCEmulator {
             case 5:
                 return {spindleCode:'M5', spindle:'OFF', spindleSpeed:0};
             default:
-                console.warn(`UNKNOWN/UNSUPPORTED MCODE[${number}]: ${line}`);
+                console.warn(`UNKNOWN/UNSUPPORTED MCODE: ${line}`);
                 return {};
         };
-    }
-
-    // reset the CNC position and clear out previously generated data
-    cncInit() {
-        this.position = { X: 0.0, Y: 0.0, Z: 0.0 };     // current C?NC location
-        this.runTime = 0.0;                             // total job run time
-        this.gcodeLines = [];                           // the raw GCODE lines for the job
-        this.gcodeData = [];                            // collection of the computed data for the job
     }
 
     // move the CNC to a new position
@@ -162,14 +162,14 @@ class CNCEmulator {
         let g = this.line.parameters.G;
         // G4 is a pause, no distance; assume parameter P in ms and S in secs
         if (g===4) return (this.line.parameters.P || this.line.parameters.S*1000 || 0);
-        let feed = this.feedRate(!!g);  // G0 at max feed others at set rate
-        let it = 60000 * this.line.calculatedData.distance / feed; // convert from minutes to milliseconds
+        this.line.feedRate = this.feedRate(!!g);  // G0 at max feed others at set rate
+        let it = 60000 * this.line.calculatedData.distance / this.line.feedRate; // convert from minutes to milliseconds
         return it; 
     }
 
     // determines feed rate from defition or instruction
     feedRate(max) {
-        if (!!max) return this.machine.maxFeed;
+        if (!max) return this.machine.maxFeed;
         if (!this.line.parameters.F) throw `No Feed rate set[${this.line.number}]: ${this.line.raw}`;
         return this.line.parameters.F;
     }
@@ -178,12 +178,12 @@ class CNCEmulator {
     prepViewData() { 
         this.viewData = [];
         let position = [0,0,0];
-        for (let path of this.gcodeData) {
-            if (path.mode==='NOP') continue;
-            let {calculatedData:calc, parameters:params} = path;
-            let instruction = { path: path, geometry:calc.geometry, stroke: path.mode, moveTo: [position[0],position[1]] };
+        for (let gcode of this.gcodeData) {
+            if (gcode.mode==='NOP') continue;
+            let {calculatedData:calc, parameters:params} = gcode;
+            let instruction = { gcode: gcode, geometry:calc.geometry, stroke: gcode.mode, moveTo: [position[0],position[1]] };
             if (calc.geometry==='arc') {
-                let ccw = calc.direction === 1; // couter clockwise flag
+                let ccw = calc.direction === 1; // counter clockwise flag
                 instruction.arc = [calc.center.X, calc.center.Y, calc.radius, calc.fromVectorAngle, calc.toVectorAngle, ccw ];
             } else {
                 instruction.lineTo = [params.X, params.Y]; // i.e. calc.geometry==='line'
@@ -214,6 +214,7 @@ class CNCEmulator {
 
     // convert GCODE into line records while computing run time in seconds
     processGCODE(gcodeLines) {
+let limit=10, enable=0;
         this.cncInit(); // reset the CNC position and data
         this.gcodeLines = gcodeLines;
         let lineNumber = 0;
@@ -221,7 +222,7 @@ class CNCEmulator {
         for (const line of gcodeLines) {
             this.line = { raw: line, number: ++lineNumber, mode: 'NOP' };
             this.line.parsedParams = this.parseLine(this.line.raw);
-            this.line.parameters = Object.assign({},this.line.parsedParams,parameters);
+            this.line.parameters = Object.assign({},parameters,this.line.parsedParams);
             if (this.line.raw.startsWith('G')) { // only GCODE "G" instrutions processed for timing...
                 let G = this.line.parsedParams.G;
                 this.line.mode = G===0 ? 'MOVE' : G<4 ? 'CUT' : 'NOP'; // G0 is a MOVE, G1-3 are CUT, G4 is a NOP
@@ -237,6 +238,7 @@ class CNCEmulator {
             };
         }
         if (this.machine.fudge) this.runTime *= this.machine.fudge; // option fudge factor adjustment
+console.log(this.gcodeData)
         return this.runTime;
     }
 

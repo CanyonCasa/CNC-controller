@@ -6,7 +6,8 @@
 //const VERSION = 1.30;   // 20251202 dvc UI updates
 
 //const VERSION = '2.00:20260101';   // 20260101 dvc Added runtime estimate and viewer
-const VERSION = '2.10:20260210';   // 20260210 dvc fixed viewer bug; rework jobrun; organized data 
+//const VERSION = '2.10:20260210';   // 20260210 dvc fixed viewer bug; rework jobrun; organized data 
+const VERSION = '2.20:20260828';   // 20260828 dvc UI functional fixes 
 
 function setNested(obj, path, value) {
     let currentObj = obj;
@@ -30,6 +31,7 @@ const cnc = Vue.createApp({
         macros: cncModelData.macros,
         state: cncModelData.state,
         tabs: cncModelData.tabs,
+        verbose: verbose,
         // app state...
         activeTab: 0,
         activeTabView: 'buttons',
@@ -105,7 +107,7 @@ const cnc = Vue.createApp({
     methods: {
         cncRX(text) {
             if (this.job.active) return this.runJob('rx',text);
-            if (verbose) console.info(`[cncRX]> ${text}`);
+            if (this.verbose) console.info(`[cncRX]> ${text}`);
             if (text==='ok') { 
                 this.params.error = 'OK';
                 this.params.alarm = 'OK';
@@ -146,7 +148,7 @@ const cnc = Vue.createApp({
             };
         },
         async drawGCODE(tx,ty) { // draw GCODE in viewer canvas
-            let drawStyle= (style) =>style==='MOVE' ? 'red' : 'blue';
+            let drawStyle = (style) =>style==='MOVE' ? 'red' : 'blue';
             let limits = emulator.prepViewLimits();  // this provides the scaling info
             let instructions = emulator.prepViewData(); // this converts loaded job gcode into drawing instructions
             let canvas = document.getElementById('gcviewer'); // prep the canvas for a new drawing
@@ -157,8 +159,8 @@ const cnc = Vue.createApp({
             let scale = Math.trunc(Math.min(size.width/limits.box.dx, size.height/limits.box.dy)*10)/10;
             ctx.scale(scale,-scale); // scale and flip the Y-axis for true cartesian system
             // compute origin location for auto centering image...
-            tx = tx!==undefined ? tx : size.width/2/scale-limits.drawn.x;
-            ty = ty!==undefined ? ty : size.height/2/scale+limits.drawn.y;
+            tx = tx!==undefined ? tx : size.width/2/scale - limits.drawn.x;
+            ty = ty!==undefined ? ty : size.height/2/scale + limits.drawn.y;
             ctx.translate(tx,-ty);
             // now draw the image in the viewer, instruction by instruction...
             for (let ix of instructions) {
@@ -206,7 +208,7 @@ const cnc = Vue.createApp({
             if (msg.error) {
                 console.error('fileResponse',error);
                 this.params.error = 'WS?';
-            } else if (verbose) {
+            } else if (this.verbose) {
                 console.info('fileResponse:',msg);
             };
             switch (msg.action) {
@@ -224,6 +226,7 @@ const cnc = Vue.createApp({
                         this.file.pseudo.substring(0,20)+'...'+this.file.pseudo.substring(this.file.pseudo.length-20): 
                         this.file.pseudo;
                     this.job.estimate = emulator.processGCODE(msg.meta.lines);
+                    if (this.verbose) console.info('gcode data:',emulator);
                     this.job.runtime = this.humanTime(this.job.estimate);
                     this.job.remaining = '-'
                     this.drawGCODE();
@@ -244,17 +247,17 @@ const cnc = Vue.createApp({
         },
         async pickButton(b) {
             if (b.disabled) return;
-            if (verbose) console.info('Button:',b)
+            if (this.verbose) console.info('Button:',b)
             switch (b.action) {
                 case 'gcode':
                     let glist = b.gcode.split(',');
                     glist.forEach(instruction=>{
-                        let gcode = this.templafy(instruction,this.params).trim();
+                        let gcode = this.templafy(instruction,this.args).trim();
                         //window.cncTX(gcode);
                         this.wsCNC.send(gcode,this.machine.termination);
                         if (gcode!='?') this.params.msg = `< ${gcode}`
                         this.scribe(`< ${gcode}`);
-                        if (verbose) console.info(`TX[${b.action}]: ${gcode}`);
+                        if (this.verbose) console.info(`TX[${b.action}]: ${gcode}`);
                     });
                     break;
                 case 'cfg':
@@ -262,17 +265,17 @@ const cnc = Vue.createApp({
                     if ('value' in b) {
                         setNested(this, b.cfg, b.value);
                     } else if (b.template) {
-                        setNested(this, b.cfg, this.templafy(b.template,this));
+                        setNested(this, b.cfg, this.templafy(b.template,this.args));
                     } else {
                         return console.warn(`NO value or template specified for cfg!`);
                     };
-                    if (verbose) console.info(`Config[${b.cfg}] changed to ${b.value}!`);
+                    if (this.verbose) console.info(`Config[${b.cfg}] changed to ${b.value}!`);
                     break;
                 case 'macro':  // equivalent to a series of buttons...
                     let macro = (b.macro instanceof Array) ? b.macro : (this.macros?.[b.macro] || []);
                     for (m of macro) await this.pickButton(m);
                     break;
-                case 'reset':   // Ctrl-x: soft-reset
+                case 'reset':   // Ctrl-x: CNC soft-reset
                     //window.cncTX(String.fromCharCode(0x18));
                     this.wsCNC.send(String.fromCharCode(0x18),this.machine.termination);
                     this.scribe(`< CTRL-X (soft reset)`);
@@ -334,6 +337,7 @@ const cnc = Vue.createApp({
                 ()=>{clearTimeout(this.alert.timex);this.popup('alert');this.alert.timex=null;},delay*1000);
         },
         rpi(action) {
+            if (this.verbose) console.log(`RPi action: ${action}`);
             switch (action) {
                 case 'reboot':
                 case 'halt':
@@ -421,7 +425,7 @@ const cnc = Vue.createApp({
                                 this.job.lineIndex++;
                                 this.job.sent.push(this.job.line);
                                 this.scribe(`< ${this.job.line}`);
-                                if (this.job.line.startsWith(M)) Object.assign(this.state,cncMotorStatus(this.job.line));
+                                if (this.job.line.startsWith('M')) Object.assign(this.state,emulator.cncMotorStatus(this.job.line));
                             };
                         };
                         await this.wait(this.machine.delay||5); // pause between lines to give CNC a chance to breathe
@@ -491,7 +495,7 @@ const cnc = Vue.createApp({
                     this.job.waiting = null;
                     break;
                 case 'line':
-                   this.job.processed++;
+                    this.job.processed++;
                     this.params.msg = `Processed: ${this.job.processed}/${this.job.lineIndex+1} (${this.job.lines.length})`;
                     let elapsed = + new Date() - this.job.start;
                     this.job.remaining = this.humanTime(Math.max(0,this.job.estimate - elapsed));
@@ -519,12 +523,12 @@ const cnc = Vue.createApp({
                 connect: function connect() {
                     if (tmp.ws) tmp.ws = null;          // destroy any previous websocket
                     tmp.ws = new WebSocket(tmp.url);    // create a new websocket
-                    if (verbose) console.info(`${tmp.tag} websocket created...`);
+                    if (this.verbose) console.info(`${tmp.tag} websocket created...`);
                     tmp.ws.addEventListener('error',(e)=>console.error);
                     tmp.ws.addEventListener('message',(msg)=>{
                         //console.log(msg.data)
                         let text = msg.data.replace(/\r?\n|\r/,'');
-                        if (verbose) console.info(`>[${tmp.tag}] ${text}`);
+                        if (this.verbose) console.info(`>[${tmp.tag}] ${text}`);
                         let data = tmp.mode==='JSON' ? JSON.parse(text) : text;
                         if (tmp.listener) tmp.listener(data);
                     });
@@ -537,11 +541,11 @@ const cnc = Vue.createApp({
                 },
                 disconnect: function () {
                     tmp.ws.close();
-                    if (verbose) console.info(`${tmp.tag} websocket destroyed!`);
+                    if (this.verbose) console.info(`${tmp.tag} websocket destroyed!`);
                 },
                 send: function (data, termination='\r\n') {
                     let text = tmp.mode==='JSON' ? JSON.stringify(data) : data;
-                    if (verbose) console.info(`<[${tmp.tag}] ${text}\n`);
+                    if (this.verbose) console.info(`<[${tmp.tag}] ${text}\n`);
                     tmp.ws.send(text + termination);
                 }
             };

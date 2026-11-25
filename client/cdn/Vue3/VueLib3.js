@@ -4,6 +4,7 @@ var VueLib3 = {
 
     // convert a comma (or other) delimited string into an array
     asList: (x,delim=/,\s*/) => x instanceof Array ? x : (x||'').split(delim),
+    iconResolve: (icon) => `/cdn/icons/${icon}.png`,
     // generates an n(=8) character unique ID of base (b=36, alphanumeric) ...
     uniqueID: (n=8,b=36) => { var u=''; while(u.length<n) u+=Math.random().toString(b).slice(2); return u.slice(-n); },
 
@@ -26,8 +27,8 @@ var VueLib3 = {
                 this.expanded = true; this.opened = true;
             },
             computed: {
-                expandIcon() { return this.inhibit ? 'ico-star-empty' : this.expanded ? 'expand_less' : 'expand_more'; },
-                menuIcons() { return this.menu || [] }
+                expandIcon() { return this.inhibit ? 'inhibit' : this.expanded ? 'collapse' : 'expand'; },
+                xmenu() { return this.menu || [] }
             },
             methods: {
                 expand(state) {
@@ -35,23 +36,25 @@ var VueLib3 = {
                     this.expanded = typeof state==='boolean' ? state : !this.expanded;
                     if (!this.opened && this.expanded) { this.opened = true; this.$emit('load'); };
                 },
+                resolveIcon(icon) { return VueLib3.iconResolve(icon) }
             },
-            template: `
+            template: /* HTML */`
                 <div class="blk-x">
-                <div class="blk-x-hdr" @click.stop="expand"><i v-icon:[expandIcon]></i>{{hdr}}
-                    <i v-for="i of menuIcons" class="blk-x-menu-ico right" v-icon:[i.icon] @click.stop=$emit(i.emit)></i>
-                </div>
-                <div class="blk-x-slot" v-if-class:none="!expanded"><slot></slot></div>
+                    <div class="blk-x-hdr" @click.stop="expand">
+                        <img class="blk-x-icon" :src="resolveIcon(expandIcon)">{{hdr}}
+                        <img v-for="i of xmenu" class="blk-x-menu-ico right" :src="resolveIcon(i.icon)" @click.stop=$emit(i.emit)>
+                    </div>
+                    <div class="blk-x-slot" v-if-class:none="!expanded"><slot>Not defined...</slot></div>
                 </div>`
             },
 
-        // linked expandable block component...
-        'x-blk': {
+        // obsolete linked expandable block component...
+/*        'x-blk': {
             props: ['blk', 'hdr', 'inhibit', 'init', 'xblk'],
             data: ()=>({ expanded: false, opened: false }), // opened fired on first expand
             created() { if (!this.init&&!this.inhibit) return; this.expanded = true; this.opened = true; this.$emit('load','init'); },
             computed: { 
-                expandIcon() { return this.inhibit ? 'more_horiz' : this.expanded ? 'expand_less' : 'expand_more'; }, 
+                expandIcon() { return this.inhibit ? 'inhibit' : this.expanded ? 'collapse' : 'expand'; }, 
             },
             methods: {
                 expand(state) {
@@ -60,6 +63,7 @@ var VueLib3 = {
                     if (!this.opened && this.expanded) { this.opened = true; this.$emit('load','expand'); };
                     if (state==='self') this.$emit('xblk',this.blk);
                 },
+                resolveIcon(icon) { return VueLib3.iconResolve(icon) }
             },
             watch: {
                 xblk: function(x,lastX) {
@@ -67,36 +71,321 @@ var VueLib3 = {
                     this.expand(x==='all');
                 }
             },
-            template: /*html*/`
+
+            template:
                 <div class="x-blk">
-                    <div class="x-blk-hdr"><i v-icon:[expandIcon] @click.stop="expand('blk')"></i>
-                    <span class="hdr-text">{{hdr}}</span>
+                    <div class="x-blk-hdr">
+                        <img :src="resolveIcon(expandIcon)" @click.stop="expand('blk')">
+                        <span class="hdr-text">{{hdr}}</span>
                         <slot name="menu"></slot>
-                        <i class="right" v-if-class:none="inhibit" v-icon:unfold_more.rotate45 @click.stop="expand('self')"></i>
+                        <img class="right" v-if-class:none="inhibit" :src="resolveIcon('menu')" @click.stop="expand('self')">
                     </div>
                     <div class="x-blk-slot" v-if-class:none="!expanded"><slot>Not defined...</slot></div>
                 </div>`
             },
+*/
+// account dialog element to encapsulate user account interface...
+        'dialog-account': {
+            props: ['show','site','who'],
+            data: function() { return {
+                account: { email: '', fullname: '', member: '', password: '', phone: '', status: '', username: '',
+                    other: Object.assign({},this.site.other) },
+                activate: { code: '', msg: '' },
+                chgdUser: false,
+                chgdUsersSet: new Set(),
+                error: false,
+                field: {
+                    accountTypes: this.site.accountTypes,
+                    statusChoices: [["Pending Activation",'PENDING'],["Active User",'ACTIVE'],["Inactive (disabled)",'INACTIVE']],
+                },
+                fields: { email: '', fullname: '', member: '', password: '', pin: '', phone: '', status: 'INACTIVE', username: '',
+                    other: Object.assign({},this.site.other) },
+                filter: true,
+                group: { name: '', desc: '' },
+                groups: [],
+                manage: false,
+                msg: '',
+                other: Object.assign({},this.site.other),
+                selectedUser: '',
+                users: [],
+                validAccountForm: false,
+                validActivateForm: false,
+                validUsername: false,
+                visible: false
+            }},
+            computed: {
+                admin() { return this.isMember('admin',this.who.member); },
+                manager() { return this.isMember('admin,manager',this.who.member); },
+                mode() { return this.manage ? 'Manage' : this.who.valid ? 'Edit' : 'Create'; },
+                usersList() { return this.users.map(u=>({value:u.username, label:u.fullname+' ('+u.username+')'})); },
+                valid() { return this.who && this.who.valid; },
+                visIcon() { return this.visible ? 'hide' : 'show'; }
+            },
+            //created() { window.account = this; },
+            methods: {
+                accountDo() {
+                    if (!(this.who || this.who.token)) return;
+                    if (this.chgdUser) this.userMerge();
+                    if (this.chgdUsersSet.size==0) return;
+                    var body = this.manage ? this.users.filter(u=>this.chgdUsersSet.has(u.username)).map(ux=>({ref: ux.username, record: ux})) : 
+                    [{ ref: this.account.username, record: this.account }];
+                    let hdrs = this.who.token ? {authorization: `Bearer ${this.who.token}`} : {};
+                    this.fetchJSON('POST','/user/change/',{ headers: hdrs, body: body } )
+                    .then(res=>{ 
+                        this.error = res.error || res.jxError;
+                        if (this.error) return this.msg=`Account operation failed; username may exist; First login to change existing user.`;
+                        let queue = [];
+                        res.jx.forEach(u=>{
+                        let msg = u[0]=='error' ? `Account operation failed for user ${u[1]} (${u[2].code}:${u[2].msg})` : 
+                        `Account operation successful for user ${u[1]}`;
+                        queue.push(msg);});
+                        this.msg = queue.join('<br>');
+                        this.chgdUsersSet.clear(); })
+                    .catch(e=>{ this.error=true; this.msg=e.toString(); });
+                },
+                chg(e) {
+                    this.chgdUser = true;
+                    this.chgdUsersSet.add(this.selectedUser);
+                    this.validateForms();
+                },
+                chgGroup(action) {
+                    if (!this.who || !this.who.token) return;
+                    if (action=='name') { this.group.desc = (this.groups[this.group.name]||{}).desc || ''; return; };
+                    if ((action=='add') && scanForMatchTo(this.groups,{name: this.group.name},null)) return;  // do not add existing group
+                    if ((action=='edit') && !scanForMatchTo(this.groups,{name: this.group.name},null)) return;  // do not edit non-existing group
+                    let tmp = [{ref: this.group.name, record: action=='del' ? null : this.group}];
+                    switch (action) {
+                        case 'edit': this.groups.map((g,i)=>this.groups[i].desc = g.name==this.group.name ? this.group.desc : g.desc); break;
+                        case 'add': this.groups.push({name: this.group.name, desc: this.group.desc}); break;
+                        case 'del': this.groups = this.groups.filter(g=>g.name!=this.group.name); break;
+                    };
+                    this.fetchJSON('POST','/user/groups/',{ headers: {authorization: `Bearer ${this.who.token}`}, body: tmp} )
+                    .then(res=>{ if (res.error || res.jxError) { console.error('Failed to update groups...'); return; }; })
+                    .catch(e=>{ this.error=true; console.error("ERROR: Post groups failed..."); this.msg=e.toString(); });
+                },
+                chgMember(group,chkd) { this.chgMembers(group,chkd,this.account.username); this.chg(); },
+                chgMembers(group,chkd,user) {
+                    let usr = scanForMatchTo(this.users,{username:user},{});
+                    let ms = new Set(usr.member.split(','));
+                    chkd ? ms.add(group) : ms.delete(group);
+                    usr.member = [...ms].join(',');
+                    this.chgdUsersSet.add(user);
+                    if (this.account.username==user) this.account.member = usr.member; 
+                    this.validateForms();
+                },
+                chgOther() { this.account.other = this.other; this.validateForms(); },
+                chgUser(user) {
+                    if (this.selectedUser!=user) this.selectedUser = user;
+                    this.userMerge();
+                    let ux = scanForMatchTo(this.users,{username:user},jsonCopy(this.fields));
+                    var setAccount = (a,u)=> a.mapByKey((v,k)=>typeof v=='object' ? setAccount(v,u[k]) : u[k]||'');
+                    this.account = setAccount(this.fields,ux);
+                    this.other = setAccount(this.fields.other,ux.other);
+                    this.$nextTick(function() {this.$refs['account-username'].focus()});
+                },
+                codeCheck() { 
+                    this.fetchJSON('POST','/user/code/'+this.account.username+'/'+this.activate.code)
+                    .then(res=>{ this.error = !!res.jx.error; this.activate.msg = res.jx.msg; })
+                    .catch(e=>{ this.error=true; this.activate.msg=e.toString(); });
+                },
+                codeRequest() {
+                    this.fetchJSON('GET','/user/code/'+this.account.username)
+                    .then(res=>{ this.error = !!res.jx.error; this.activate.msg = res.jx.msg; })
+                    .catch(e=>{ this.error=true; this.activate.msg=e.toString(); });
+                },
+                groupNotAdmin(name) { return (name=='admin'||name=='manager')&&!this.admin; },
+                groupByName(name) { return scanForMatchTo(this.groups,{name:name},null); },
+                groupMembers(name) { return this.users.map(u=>({un:u.username,ckd:this.isMember(name,u.member)})); },
+                resolveIcon(icon) { return VueLib3.iconResolve(icon) },
+                isMember(ax='',mx='') { return (typeof ax=='string' ? ax.split(',') : ax).some(a=>mx.split(',').includes(a)) },
+                listGroupsAndUsers() {
+                    if (!this.manager || !this.who || !this.who.token) return;
+                    this.fetchJSON('GET','/user/groups',{headers:{authorization: `Bearer ${this.who.token}`}})
+                    .then(res=>{ this.groups = res.jxOK&&!res.jx.error ? res.jx : []; })
+                    .catch(e=>console.error("listGroupsAndUsers[groups]:",e));
+                    this.fetchJSON('GET','/user/users',{headers:{authorization: `Bearer ${this.who.token}`}})
+                    .then(res=>{ this.users = res.jxOK&&!res.jx.error ? res.jx : []; })
+                    .catch(e=>console.error("listGroupsAndUsers[users]:",e));
+                },
+                resetPW() { this.account.password = this.account.password ? '' : '#Temp1234'; this.visible=true; this.chg(); },
+                see() { this.visible = !this.visible; },
+                userMerge() { // merge changes to user if changed
+                    if (!this.chgdUser) return;
+                    let existingUser = scanForMatchTo(this.users,{username:this.account.username},null);
+                    if (existingUser) { existingUser.mergekeys(this.account); } else { this.users.push(jsonCopy(this.account)); };
+                    this.chgdUser = false;
+                },
+                validateForm(form) {
+                    id = document.getElementById(form);
+                    return (id!==null && this.$refs[form]) ? this.$refs[form].checkValidity() : false;
+                },
+                validateForms() {
+                    // whole account form button enable, and sub forms...
+                    this.validAccountForm = this.manage || this.validateForm('account-form');
+                    this.validActivateForm = this.validateForm('account-activate-form');
+                    this.validUsername = this.validateForm('activate-username');
+                },
+                wndwClose() { this.$emit('close', 'account'); }
+                },
+            watch: {
+                manager() { this.listGroupsAndUsers(); },
+                show() {
+                    if (!this.show || !this.valid) return;
+                    if (this.users.length==0) this.users = [jsonCopy(this.who)];
+                    this.chgUser(this.who.username);
+                }
+            },
+            template: /* HTML */`
+                <div class="account-dialog" v-show="show">
+                <h3>Account... 
+                    <img class="account-icon right" :src="resolveIcon('close')" @click="wndwClose">
+                    <img class="account-icon right" v-if-class:none="!manager" :src="resolveIcon('account')"  @click="manage=!manage"></h3>
+                <span v-show="!manage" class="account-text text-indent">
+                    <p class="text-alert">Privacy Notice: Information used only for account management and not shared with third parties.</p>
+                    <p>To change existing account information, please login first...</p>
+                </span>
+                <h4>{{ !valid ? 'Step 1: Create Account...' : mode+' Account...' }}</h4>
+                <div class="account-grid" v-show="manage">
+                    <label class="account-label">User:</label>
+                    <span class="account-input">
+                    <select v-model="selectedUser" @change="chgUser(selectedUser)">
+                        <option v-for="u of usersList" :value="u.value">{{u.label}}</option>
+                    </select>
+                    <img class="account-icon text-icon" :src="resolveIcon('filter')"  @click.prevent="filter=!filter">
+                    </span>
+                    <label v-show="filter" class="account-label">Filter:</label>
+                    <label v-show="filter" class="account-desc">TBD</label>
+                </div>
+                <form class="account-form" ref="account-form" @keyup="chg">
+                    <blk-x hdr="Credentials..." inhibit="true" init="true">
+                        <label class="account-label">Username:</label>
+                            <label v-show="valid" class="account-input text-bold">{{account.username}}</label>
+                            <input v-show="!valid" class="account-input validated" ref="account-username" type="text" 
+                            placeholder="username" v-model="account.username" v-pattern:username required autocomplete @input="chg">
+                            <span class="account-desc" v-pattern:username.desc></span>
+                        <label class="account-label">Password:</label>
+                        <span>
+                            <input class="account-input account-pw validated" autocomplete="off" ref="account-password" placeholder="password/code" 
+                            :type="visible?'text':'password'" v-model="account.password" v-pattern:password :required="!manage" @input="chg">
+                            <img class="account-icon" :src="resolveIcon(visIcon)"  @click.prevent="see">
+                            <img class="account-icon" v-if-class:none="!manage" :src="resolveIcon('reset')" title="Reset password"   @click.stop="resetPW">
+                        </span>
+                        <span class="account-desc" v-pattern:password.desc></span>
+                    </blk-x>
+                    <blk-x hdr="Identity..." init="true">
+                        <label class="account-label">Fullname:</label>
+                        <input class="account-input validated" type="text" placeholder="fullname" v-model="account.fullname" 
+                            v-pattern:fullname required autocomplete @input="chg">
+                        <span class="account-desc" v-pattern:fullname.desc></span>
+                        <label class="account-label">Email:</label>
+                        <input class="account-input validated" type="text" placeholder="email" v-model="account.email" 
+                            v-pattern:email required autocomplete @input="chg">
+                        <span class="account-desc" v-pattern:email.desc></span>
+                        <label class="account-label">Phone:</label>
+                        <input class="account-input" v-if-class:validated="!!account.phone" type="text" placeholder="phone" 
+                            v-model="account.phone" v-pattern:phone :required="!!account.phone" autocomplete @input="chg">
+                        <span class="account-desc" v-pattern:phone.desc></span>
+                        <span class="account-desc text-alert">Must be capble of receiving texts!</span>
+                        <span class="account-msg">Other...</span>
+                        <label class="account-label">Account:</label>
+                        <select class="account-input validated" v-model="other.account" required @change="chgOther">
+                            <option disabled :selected="other.account==''" value='none'>Please select one ...</option>
+                            <option v-for="c of field.accountTypes" :selected="other.account==c[1]" :value="c[1]">{{c[0]}}</option>
+                        </select>
+                        <span class="account-desc">Please select the appropriate type.</span>
+                        <!--<label class="account-label">Reference:</label>
+                        <select class="account-input validated" v-model="other.ref" required @change="chgOther">
+                            <option disabled :selected="other.account==''" value=''>Please select one ...</option>
+                            <option v-for="c of field.refChoices" :selected="other.account==c[1]" :value="c[1]">{{c[0]}}</option>
+                        </select>
+                        <span class="account-desc">Please select the appropriate reference.</span>-->
+                    </blk-x>
+                    <blk-x v-if="manage" hdr="Administrative...">
+                        <label class="account-label">Status:</label>
+                        <select class="account-input validated" v-model="account.status" @change="chg">
+                            <option v-for="c of field.statusChoices" :value="c[1]">{{c[0]}}</option>
+                        </select>
+                        <span class="account-msg">Group Membership (Permissions)...</span>
+                        <template v-for="g in groups">
+                            <span class="account-label">          
+                            <label class="account-group text-small" v-if-class:text-alert="g.name==group.name" 
+                            @click.stop="group.mergekeys(g)">{{g.name}}</label>
+                            <input type="checkbox" name="member" :checked="isMember(g.name,account.member)" :disabled="groupNotAdmin(g.name)" 
+                            @change="chgMember(g.name,$event.target.checked)">
+                            </span>
+                            <span class="account-desc" v-if-class:text-alert="g.name==group.name">{{g.desc}}</span>
+                        </template>
+                        <template v-show="admin">
+                            <span class="account-msg">Edit Group...</span>        
+                            <label class="account-label">Name:</label>
+                            <input class="account-input validated" type="text" placeholder="Group" v-model="group.name" v-pattern="/[a-z]+/"
+                            @click.stop @keyup.stop v-debounce.input="()=>chgGroup('name')">
+                            <label class="account-label">Desc:</label>
+                            <input class="account-input stretch validated" type="text" placeholder="Description" v-model="group.desc" 
+                            v-pattern:text @click.stop @keyup.stop>
+                            <label class="account-label">Members:</label>
+                            <span class="account-desc" v-show="group.name">
+                                <label class="text-no-wrap" v-for="m in groupMembers(group.name)">
+                                <input type="checkbox" name="gm" :checked="m.ckd" :disabled="groupNotAdmin(group.name)" 
+                                    @change="chgMembers(group.name,$event.target.checked,m.un)">:
+                                <span v-if-class:text-bold="m.ckd">{{m.un}}</span></label>
+                            </span>
+                            <span class="account-input">
+                                <img class="icon-small" :src="resolveIcon('add')" title="Add new group" @click="chgGroup('add')">
+                                <img class="icon-small" :src="resolveIcon('edit')" title="Edit named group" @click="chgGroup('edit')">
+                                <img class="icon-small" v-if-class:none="!groupByName(group.name)" :src="resolveIcon('del')" title="Delete named group" @click="chgGroup('del')">
+                            </span>        
+                            <span class="account-msg">Changed...</span>        
+                            <label class="account-input text-bold">{{Array.from(chgdUsersSet).join(',')}}</label>
+                        </template>
+                    </blk-x>
+                    <input type="button" class="account-button" :disabled="!validAccountForm" @click.stop="accountDo" 
+                        :value="valid?'EDIT ACCOUNT'+((chgdUsersSet.size==1)?'':'S'):'SIGN UP'">
+                    <div class="text-small"  v-if-class:text-error="error">{{ msg }}</div>
+                </form>
+                <div  v-if="!valid">
+                <h3>Step 2: Activate Account...</h3>
+                <form ref="account-activate-form" class="account-grid" @keyup="chg">
+                    <label class="account-label">Username:</label>
+                    <input class="account-input validated" type="text" placeholder="username" v-pattern:username required 
+                        ref="activate-username" v-model="account.username">
+                    <span class="account-desc text-small" v-pattern:username.desc></span>
+                    <label class="account-label">Code:</label>
+                    <input class="account-input validated" type="text" placeholder="challenge code" ref="account-code" v-model="activate.code"
+                        v-pattern:code required @keyup.enter="codeCheck">
+                    <span class="account-desc text-small" v-pattern:code.desc></span>
+                    <span class="account-desc text-small">
+                    <button class="account-button" type="button" :disabled="!validUsername" @click="codeRequest">Get Code</button>
+                    <button class="account-button" type="button" :disabled="!validActivateForm" @click="codeCheck">Activate</button>
+                    </span>
+                    <span class="account-desc text-alert text-small" v-if-class:error="error">{{ activate.msg }}</span>
+                </form>
+                </div> 
+                </div>`
+        },
 
         // login dialog element to encapsulate user login interface...
         'dialog-login': {
             props: ['show', 'who'],
             data: ()=>({
-            error: false,
-            formValid: false,
-            msg: '',
-            password: '',
-            token: '',
-            username: '',
-            usernameValid: false,
-            visible: false
+                error: false,
+                formValid: false,
+                msg: '',
+                password: '',
+                token: '',
+                username: '',
+                usernameValid: false,
+                visible: false
             }),
-            mounted() { this.restoreCreds(); }, 
+            mounted() { this.restoreCreds(); },
+            computed: {
+                eyeIcon() { return VueLib3.iconResolve(this.visible ? 'hide' : 'show') }
+            },
             methods: {
                 chg(dx) {
                     this.usernameValid=this.$refs["login-username"].checkValidity();
                     this.formValid=this.$refs["login-dialog"].checkValidity();
-                    if (dx.data===undefined) this.login(); // autocomplete does not return data!
+                    if (this.formValid && this.$refs["login-password"].matches(':-webkit-autofill')) this.login(); // autocomplete detection!
                 },
                 getCode() {
                     this.fetchJSON('GET','/user/code/'+this.username)
@@ -107,23 +396,26 @@ var VueLib3 = {
                     var auth = token ? `Bearer ${token}` : `Basic ${btoa(this.username+":"+this.password)}`;// authorization header
                     var creds = { payload: {}, token: '', error: true, msg: '', valid: false }; // default failure
                     this.fetchJSON('GET','/login',{headers: {authorization: auth}})
-                    .then(res=>{
-                        creds.mergekeys(res.jx).mergekeys({ error: !!res.jx.error, msg: res.jx.msg||'' }); 
-                        creds.valid = verifyThat(creds.payload,'isNotEmpty');
-                        this.notify(creds);
-                        if (creds.valid && this.show) this.$emit('close'); })
-                    .catch(e=>{
-                        creds.msg = e.toString();
-                        this.notify(creds);
-                    });
+                        .then(res=>{
+                            creds.mergekeys(res.jx).mergekeys({ error: !!res.jx.error, msg: res.jx.msg||'' }); 
+                            creds.valid = verifyThat(creds.payload,'isNotEmpty');
+                            this.notify(creds);
+                            if (creds.valid && this.show) this.$emit('close'); })
+                        .catch(e=>{
+                            creds.msg = e.toString();
+                            this.notify(creds);
+                        });
                 },
                 logout() {  // called when logout event emitted by parent
                     if (!this.token) return;  // only logout if user is logged in
                     this.fetchJSON('GET','/logout',{headers: {authorization: `Bearer ${this.token}`}})
-                    .then(res=>this.notify(res.jx)).catch(e=>{ console.error(e); this.$emit('error',e); });
+                        .then(res=>{
+                            this.notify(res.jx);
+                        })
+                        .catch(e=>{ console.error(e); this.$emit('error',e); });
                 },
                 notify(creds={},restored) {
-                    this.error = creds.error || false;   // set local variables and store payload and token - valid or not
+                    this.error = creds.error || false;  // set local variables and store payload and token - valid or not
                     this.msg = creds.msg || '';
                     this.token = creds.token || '';
                     this.storage.local =  { jwt: creds.valid ? { token: creds.token, payload: creds.payload } : undefined };
@@ -137,19 +429,20 @@ var VueLib3 = {
                     let valid = payload && 1000*(payload.iat+payload.exp) > new Date().valueOf();
                     let creds = valid ? { valid: true, token: token, payload: payload, error: false, msg: '' } :
                         { valid: false, error: true, msg: 'Invalid or Expired login token' };
-                    this.notify(creds,true);
+                    this.notify(creds,valid);
                     if (valid && payload.ext) this.login(token);    // login extendable?, do so in background
-                }       
+                }
             },
             template: /* HTML */ `
                 <form class="login-dialog" ref="login-dialog" v-show="show">
                     <span class="login-text">Sign in... <img class="login-close" @click="$emit('close')"></span>
-                    <span class="login-desc italic">Enter a valid username and password/code...</span>
-                    <input class="login-input validated" ref="login-username" type="text" placeholder="username" v-model="username" 
+                    <span class="login-desc text-italic">Enter a valid username and password/code...</span>
+                    <input ref="login-username" class="login-input validated" type="text" placeholder="username" v-model="username" 
                         v-pattern:username required autocomplete="username" @input="chg">
                     <span class="login-desc" v-pattern:username.desc></span>
-                    <input ref="lgnPW" class="login-input login-pw validated" type="password" placeholder="password/code" v-model="password" 
+                    <input ref="login-password" class="login-input login-pw validated" :type="visible?'text':'password'" placeholder="password/code" v-model="password" 
                         v-pattern:password required autocomplete="current-password" @input="chg" @keyup.enter="login()">
+                    <img class="login-icon" :src="eyeIcon" @click.prevent="visible = !visible" :title="visible?'Hide Password':'Show Password'">
                     <span class="login-desc" v-pattern:password.desc></span>
                     <input type="button" class="login-button" :disabled="!usernameValid" @click.stop="getCode()" value="Get Code">
                     <input type="button" class="login-button right" :disabled="!formValid" @click.stop="login()" value="SIGN IN">
@@ -193,66 +486,63 @@ var VueLib3 = {
                 };
                 dragElement(this.$refs['flt'],this.$refs['fltHdr']);
             },
-            template: `
+            template: /* HTML */`
                 <div ref="flt">
                     <div class="floater-hdr move" ref="fltHdr">
-                    <i v-show="close" class="right" v-icon:close @click="$emit('close')"></i>
-                    <i class="left move" v-icon:open_with></i>
-                    <span>{{title}}</span>
+                        <img  v-show="close" class="right" src="/cdn/icons/close.png" @click="$emit('close')">
+                        <span>{{title}}</span>
                     </div>
-                    <div>
                     <slot>Content Goes Here!</slot>
-                    </div>
                 </div>`
         },
 
         // page layout default sections...
         generic: {
             props: ['def',"show", "user"],
-            template: `<div v-html="def.content||'Loading (Generic), please wait...'" v-show="show"></div>`
+            template: /* HTML */`<div v-html="def.content||'Loading (Generic), please wait...'" v-show="show"></div>`
         },
 
-        // input text field with private value...
+        // wrapper for text input for passswords and such with public or private display of the value...
         'private-input': {
-            props: ['modelValue', 'private'],
-            data: () => ({sel:{dir:'',start:0,end:0}, temp: '', text: '', timex: null}),
+            props: {
+                auto: { type: Object, default: () => ({}) },
+                modelValue: { type: String, default: '' },
+                private: { type: Boolean, default: true }
+            },
+            data: function() { return { 
+                autocap: this.auto.capitalize || 'off',
+                autocrct: this.auto.correct || 'off',
+                selected:{ isSelected: false, start: 0, end: 0 }, 
+                temp: '', //holds the modelValue (with changes)
+                text: '', // value displays in text field
+                timex: null} },
             created() { this.temp = this.modelValue; this.text = '*'.repeat(this.temp.length); },
             methods: {
                 chg(evt) {
-console.log(evt,typeof evt,evt.data,evt.srcElement.selectionDirection,evt.srcElement.selectionStart,evt.srcElement.selectionEnd)
                     let ch = evt.data || '';
-                    if (evt.inputType==='deleteContentBackward') this.sel.start -= 1; // backspacekey; doesn't happen if start=0
-console.log('*data:',this.sel,this.temp,this.text)
-                        let num = this.sel.end - this.sel.start;
-                        this.temp = this.temp.splice(this.sel.start,num,ch);
-                        this.text = this.text.splice(this.sel.start,num,ch);
-                    //};
-console.log('data*:',this.temp,this.text)
-                    //this.temp = (ch===null) ? this.temp.slice(0,-1) : this.temp + ch;
-                    //this.text = (ch===null) ? this.text.slice(0,-1) : this.text + ch;
+                    // handle selected text, backspace key, or new character...
+                    let [start,end] = this.selected.isSelected ? [this.selected.start+1,this.selected.end+1] : [evt.target.selectionStart,evt.target.selectionEnd];
+                    this.temp = (evt.inputType==='deleteContentBackward') ? this.temp.slice(0,start) + this.temp.slice(end+1) :
+                        this.temp.slice(0,start-1) + ch + this.temp.slice(end-1);
+                    this.selected.isSelected = false;
                     if (this.timex) {
                         clearTimeout(this.timex);
                         this.timex = null;
                     };
-                    if (this.private) {
+                    if (this.private) { // provides the temporary display of characters then displays a * string
                         this.timex = setTimeout(()=>{ this.updateText(); this.timex = null; this.$emit('update:modelValue', this.temp); },300); 
-                    } else {
+                    } else { // not private displays the actual value
                         this.text = this.temp;
                         this.$emit('update:modelValue', this.temp);
-console.log('data**:',this.temp,this.text)
                     };
-                    let [dir,start,end] = [evt.srcElement.selectionDirection,evt.srcElement.selectionStart,evt.srcElement.selectionEnd];
-                    this.sel = { dir, start, end };
-console.log('select*:',this.sel)
                 },
-                clk(evt) {
-                    let [dir,start,end] = [evt.srcElement.selectionDirection,evt.srcElement.selectionStart,evt.srcElement.selectionEnd];
-                    this.sel = { dir, start, end };
-console.log('select:',this.sel)
+                slct(evt) { // mark selected text...
+                    let [start,end] = [evt.srcElement.selectionStart,evt.srcElement.selectionEnd];
+                    this.selected = { isSelected: true, start, end };
                 },
                 updateText() { this.text = this.private ? '*'.repeat(this.temp.length) : this.temp; }
             },
-            template: `<input class="private-input" ref="elmt" type="text" :value="text" @input="chg" @click="clk">`,
+            template: `<input class="private-input" ref="elmt" type="text" :value="text" :autocapitalize="autocap" :autocorrect="autocrct" @select="slct" @input="chg">`,
             watch: {
                 modelValue: function(mv) { if (mv!==this.temp) this.temp = mv; this.updateText(); },
                 private: function(p) { this.updateText(); }
@@ -271,7 +561,7 @@ console.log('select:',this.sel)
                     this.$emit('state',!!this.state);
                 }
             },
-            template: `<button class="toggle-button" type="button" @click="change()">{{ lbls[state] }}</button>`
+            template: /* HTML */`<button class="toggle-button" type="button" @click="change()">{{ lbls[state] }}</button>`
         }
     },
 
@@ -338,26 +628,7 @@ console.log('select:',this.sel)
             function (el, binding) {
                 var now = new Date().toISOString();
                 if ((binding.value||now)<now) el.style.display = 'none';
-        },
-        
-        // custom directive to simplify icon definition across sources; 
-        //   supports Google Material Design and icomoon.io custom woff
-        // examples: <i v-icon:icon_name></i>
-        //           <i v-icon:[expression]></i>
-        //           <i v-icon="'name with spaces'"></i>
-        icon: 
-            function (el,binding) { // mounted and updated...
-                var icon = binding.arg || binding.value || '';
-                if (icon.startsWith('ico-')) {  // icomoon icons
-                    if (el.dataset.icon) el.classList.remove(el.dataset.icon);
-                    el.dataset.icon = icon;
-                    el.classList.add(icon);
-                } else {                        // material design icons
-                    if (!el.classList.contains('material-icons')) el.classList.add('material-icons');
-                    el.innerHTML = icon;
-                };
-                Object.keys(binding.modifiers).forEach(m=> el.classList.add(m));
-        },
+            },
 
         // custom directive to conditionally add a class to an element
         // example: <element v-if-class:extra_class="test"></element>
@@ -365,7 +636,7 @@ console.log('select:',this.sel)
             function (el, binding) {
                 if (binding.value) { el.classList.add(binding.arg); } 
                     else { el.classList.remove(binding.arg); };
-        },
+            },
 
         // custom directive to add 'name-based' regular expression patterns to inputs and optionally filter your input to comply...
         // example: <input v-pattern:username> ==> <input pattern='[a-z0-9]{3,15}]' />
@@ -425,7 +696,7 @@ console.log('select:',this.sel)
     plugins: {
 
         // automatically loads dependencies before generating content...
-        // dependencies: arraof objects with type and src properties
+        // dependencies: array of objects with type and src properties
         // returns array of [error_flag, result_object]
         lazyLoader: {
             install: (app, options) => {
@@ -444,8 +715,9 @@ console.log('select:',this.sel)
                         switch (d.type) {
                             case 'js':
                                 // scripts may load but fail parsing so require (window error) trapping and fallback timeout...
-                                let timex = setTimeout((d) => resolve([true, `${d.src} timeout`]), 10000, d);
-                                let elmtJResolve = (x) => { timex = null; resolve(x); }
+                                let timex = setTimeout((d) => resolve([true, 
+                                    `${d.src} timeout: possible missing LibReady event`]), 5000, d);
+                                let elmtJResolve = (x) => {  clearTimeout(timex); timex = null; resolve(x); }
                                 let elmtJ = document.createElement('script');
                                 elmtJ.async = 'async' in d ? d.async : elmtJ.async;
                                 if (d.vue) {
@@ -500,7 +772,7 @@ console.log('select:',this.sel)
                     return {jx:jx, jxOK:jxOK, jxError:jxError};
                 }
 
-                // logging routine...
+                // logging routine wrapper...
                 function scribble(verbose, id) {
                     function scribe (stage,prompt,detail) { console.log(`##${id} fetch[${stage}]:`, prompt, detail); };
                     return verbose ? scribe : // true
